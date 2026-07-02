@@ -1,0 +1,22 @@
+{
+  "name": "i18n-studio",
+  "version": "0.2.0",
+  "type": "module",
+  "description": "Local web tool to edit any Astro-style i18n string files (export default { <lang>: {...} }) with AST-safe minimal-diff saves, hot-reload, and Claude translation suggestions.",
+  "bin": {
+    "i18n-studio": "server.mjs"
+  },
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.0",
+    "@hono/node-server": "^1.13.0",
+    "hono": "^4.6.0",
+    "ts-morph": "^24.0.0"
+  }
+}

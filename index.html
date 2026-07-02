@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>i18n Studio</title>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+<style>
+  :root{--bg:#0c1116;--panel:#0f151c;--ink:#f4f6f8;--muted:#aab3bd;--border:#262d35;--lead:#bc9afa;--ok:#82d2cf;--warn:#f1e170;--err:#f5877f}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 ui-monospace,"Monaspace Neon",SFMono-Regular,Menlo,monospace}
+  header{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--border);padding:12px 18px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+  header h1{font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0;font-weight:700}
+  input[type=search]{flex:1;min-width:200px;background:var(--bg);border:1px solid var(--border);color:var(--ink);border-radius:8px;padding:8px 12px;font:inherit}
+  .stat{color:var(--muted);font-size:12px}
+  .stat b{color:var(--lead)}
+  main{padding:14px 18px 120px;max-width:1200px;margin:0 auto}
+  .file{margin:22px 0 6px;color:var(--warn);font-weight:700;letter-spacing:.05em;font-size:14px}
+  .row{display:grid;grid-template-columns:220px 1fr 1fr;gap:12px;padding:10px 0;border-top:1px solid var(--border);align-items:start;
+       content-visibility:auto;contain-intrinsic-size:auto 120px}
+  .row>*{min-width:0}
+  .key{color:var(--muted);font-size:12px;word-break:break-all;padding-top:8px}
+  .cell{display:flex;flex-direction:column;gap:5px}
+  textarea{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--ink);border-radius:8px;padding:8px 10px;font:inherit;resize:vertical;min-height:38px;field-sizing:content;overflow-wrap:anywhere}
+  textarea:focus{outline:none;border-color:var(--lead)}
+  textarea:focus-visible{outline:2px solid var(--lead);outline-offset:1px}
+  textarea.ro{color:var(--muted);border-style:dashed;background:transparent}
+  .cellbar{display:flex;gap:8px;align-items:center;font-size:11px;color:var(--muted)}
+  button{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px 11px;font:inherit;font-size:11px;cursor:pointer}
+  button:hover{border-color:var(--lead);color:var(--ink)}
+  button:focus-visible,a:focus-visible{outline:2px solid var(--lead);outline-offset:2px}
+  .saved{color:var(--ok)}.saving{color:var(--warn)}.err{color:var(--err)}
+  .sugs{display:flex;flex-direction:column;gap:4px;margin-top:2px}
+  .sug{text-align:left;white-space:normal;line-height:1.4;border-color:var(--lead);color:var(--ink)}
+  .lang{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .ro-tag{color:var(--warn)}
+  footer{position:fixed;bottom:0;left:0;right:0;background:var(--panel);border-top:1px solid var(--border);padding:8px 18px;font-size:12px;color:var(--muted);display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  footer b{color:var(--ink)}
+  .linkish{border:0;background:none;color:var(--lead);text-decoration:underline;padding:0;font-size:12px;cursor:pointer}
+  .notice{color:var(--ok)}
+</style>
+</head>
+<body x-data="studio()" x-init="load()">
+<header>
+  <h1>i18n&nbsp;Studio</h1>
+  <input type="search" placeholder="filter by key or text…" aria-label="Filter strings by key or text" x-model.debounce.250ms="q" />
+  <span class="stat"><b x-text="visibleCount()"></b> / <span x-text="totalCount()"></span> strings · <b x-text="langs.join('·')"></b></span>
+</header>
+<main>
+  <template x-for="f in files" :key="f.file">
+    <section x-show="fileVisible(f)">
+      <h2 class="file" x-text="f.file"></h2>
+      <template x-for="e in f.entries" :key="e.path">
+        <div class="row" x-show="rowVisible(e)">
+          <div class="key" x-text="e.path"></div>
+          <template x-for="lang in langs" :key="lang">
+            <div class="cell">
+              <div class="cellbar">
+                <span class="lang" x-text="lang"></span>
+                <template x-if="e[lang] && e[lang].editable">
+                  <span role="status" :class="statusClass(f.file,lang,e.path)" x-text="statusText(f.file,lang,e.path)"></span>
+                </template>
+                <template x-if="e[lang] && e[lang].editable">
+                  <button @click="suggest(f.file,e,lang)"
+                          :aria-label="'Suggest '+lang+' translations for '+f.file+' '+e.path"
+                          x-text="loadingKey===skey(f.file,lang,e.path)?'…':'suggest'"></button>
+                </template>
+                <template x-if="e[lang] && !e[lang].editable"><span class="ro-tag">computed · read-only</span></template>
+                <template x-if="!e[lang]"><span>—</span></template>
+              </div>
+              <template x-if="e[lang]">
+                <textarea :class="e[lang].editable?'':'ro'" :readonly="!e[lang].editable"
+                  :aria-label="f.file+' · '+e.path+' · '+lang"
+                  :value="e[lang].value"
+                  @input="e[lang].editable && onEdit(f.file,lang,e,$event.target.value)"></textarea>
+              </template>
+              <div class="sugs">
+                <template x-for="(s,i) in (sugs[skey(f.file,lang,e.path)]||[])" :key="i">
+                  <button class="sug" @click="applySug(f.file,lang,e,s)" x-text="s"></button>
+                </template>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+    </section>
+  </template>
+</main>
+<footer>
+  <span>auto-saves on edit → <b>Astro hot-reloads</b></span>
+  <span><b x-text="backups"></b> local backups</span>
+  <button class="linkish" @click="restoreLast()">undo last edit</button>
+  <span class="notice" role="status" x-show="notice" x-text="notice"></span>
+</footer>
+
+<script>
+function studio(){
+  return {
+    files:[], langs:[], q:'', status:{}, sugs:{}, loadingKey:null, timers:{}, pending:{}, backups:0, notice:'',
+    async load(){ const r=await fetch('/api/strings').then(r=>r.json()); this.files=r.files; this.langs=r.langs;
+      try{ this.backups=JSON.parse(localStorage.getItem('i18nstudio.backups')||'[]').length; }catch{} },
+    skey(file,lang,path){ return file+'::'+lang+'::'+path; },
+    totalCount(){ let n=0; for(const f of this.files) for(const e of f.entries) for(const l of this.langs) if(e[l]&&e[l].editable) n++; return n; },
+    visibleCount(){ let n=0; for(const f of this.files) for(const e of f.entries){ if(!this.rowVisible(e))continue; for(const l of this.langs) if(e[l]&&e[l].editable) n++; } return n; },
+    match(e){ const q=this.q.trim().toLowerCase(); if(!q) return true;
+      if(e.path.toLowerCase().includes(q)) return true;
+      return this.langs.some(l=>e[l]&&String(e[l].value).toLowerCase().includes(q)); },
+    rowVisible(e){ return this.match(e); },
+    fileVisible(f){ return f.entries.some(e=>this.rowVisible(e)); },
+    statusText(file,lang,path){ const s=this.status[this.skey(file,lang,path)]; return s?({saving:'saving…',saved:'saved',err:'error'})[s.state]:''; },
+    statusClass(file,lang,path){ const s=this.status[this.skey(file,lang,path)]; return s?({saving:'saving',saved:'saved',err:'err'})[s.state]:''; },
+    onEdit(file,lang,e,value){
+      const k=this.skey(file,lang,e.path);
+      if(this.pending[k]===undefined) this.pending[k]=e[lang].value; // capture pre-edit value once per burst
+      e[lang].value=value;
+      this.status[k]={state:'saving'};
+      clearTimeout(this.timers[k]);
+      this.timers[k]=setTimeout(()=>this.save(file,lang,e,value),500);
+    },
+    async save(file,lang,e,value){
+      const k=this.skey(file,lang,e.path);
+      const prev=this.pending[k]; delete this.pending[k];
+      const r=await fetch('/api/save',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({file,lang,path:e.path,value})}).then(r=>r.json()).catch(err=>({ok:false,error:String(err)}));
+      this.status[k]={state:r.ok?'saved':'err'};
+      if(r.ok && prev!==undefined && prev!==value) this.backup(file,lang,e.path,prev,value);
+      if(r.ok) setTimeout(()=>{ if(this.status[k]?.state==='saved') this.status[k]=null; },1500);
+    },
+    async suggest(file,e,lang){
+      const from=this.langs.find(l=>l!==lang)||'en';
+      const src=e[from]; if(!src){ return; }
+      const k=this.skey(file,lang,e.path); this.loadingKey=k;
+      const r=await fetch('/api/suggest',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({sourceText:src.value,from,to:lang,path:e.path})}).then(r=>r.json()).catch(err=>({ok:false}));
+      this.loadingKey=null;
+      this.sugs[k]= r.ok? r.suggestions : [];
+      if(!r.ok){ this.flash('Suggestion failed — try again.'); }
+    },
+    applySug(file,lang,e,s){
+      const k=this.skey(file,lang,e.path);
+      if(this.pending[k]===undefined) this.pending[k]=e[lang].value;
+      e[lang].value=s;
+      this.sugs[k]=[];
+      this.save(file,lang,e,s);
+    },
+    flash(msg){ this.notice=msg; setTimeout(()=>{ if(this.notice===msg) this.notice=''; },2500); },
+    // ---- localStorage backup ring (last 200 edits, {prev,next} per edit) ----
+    backup(file,lang,path,prev,next){
+      const key='i18nstudio.backups';
+      const arr=JSON.parse(localStorage.getItem(key)||'[]');
+      arr.push({file,lang,path,prev,next,ts:Date.now()});
+      while(arr.length>200) arr.shift();
+      localStorage.setItem(key,JSON.stringify(arr));
+      this.backups=arr.length;
+    },
+    async restoreLast(){
+      const key='i18nstudio.backups';
+      const arr=JSON.parse(localStorage.getItem(key)||'[]');
+      const last=arr.pop();
+      if(!last){ this.flash('Nothing to undo.'); return; }
+      localStorage.setItem(key,JSON.stringify(arr)); this.backups=arr.length;
+      for(const f of this.files) if(f.file===last.file) for(const e of f.entries) if(e.path===last.path && e[last.lang]){
+        e[last.lang].value=last.prev;
+        const r=await fetch('/api/save',{method:'POST',headers:{'content-type':'application/json'},
+          body:JSON.stringify({file:last.file,lang:last.lang,path:last.path,value:last.prev})}).then(r=>r.json()).catch(()=>({ok:false}));
+        this.flash(r.ok?('Undid '+last.path+' ('+last.lang+')'):'Undo failed.');
+        return;
+      }
+      this.flash('Could not find '+last.path+' to undo.');
+    },
+  };
+}
+</script>
+</body>
+</html>
