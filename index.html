@@ -80,19 +80,19 @@
 </head>
 <body x-data="studio()" x-init="init()" @keydown.window="onKey($event)">
 
-<header>
+<header :inert="review">
   <div class="hrow">
     <h1>i18n&nbsp;Studio</h1>
     <input type="search" placeholder="filter by key or text…" aria-label="Filter by key or text" x-model.debounce.200ms="q" />
     <label class="ctl">src
       <select x-model="source" aria-label="Source language">
-        <template x-for="l in langs" :key="l"><option :value="l" x-text="l"></option></template>
+        <template x-for="l in langs" :key="l"><option :value="l" :disabled="l===target" x-text="l"></option></template>
       </select>
     </label>
     <span class="arrow">→</span>
     <label class="ctl">target
       <select x-model="target" aria-label="Target language">
-        <template x-for="l in langs" :key="l"><option :value="l" x-text="l"></option></template>
+        <template x-for="l in langs" :key="l"><option :value="l" :disabled="l===source" x-text="l"></option></template>
       </select>
     </label>
     <button class="btn-key" @click="openReview()" :disabled="!rows.length" title="Review filtered entries one-by-one (keyboard)">review ▸</button>
@@ -132,7 +132,7 @@
   </div>
 </header>
 
-<main>
+<main :inert="review">
   <div class="cols"><span>file · key</span><span x-text="source+' (source)'"></span><span x-text="target+' (target)'"></span><span></span></div>
 
   <template x-if="!rows.length">
@@ -220,7 +220,7 @@
       <span x-text="'filter: '+fStatus"></span>
       <span class="spacer" style="flex:1"></span>
       <span class="save-state" :class="cur()?saveState(cur()):''" x-text="cur()?saveText(cur()):''"></span>
-      <button @click="closeReview()">close ✕ <span class="kbd-inline">Esc</span></button>
+      <button tabindex="-1" @click="closeReview()">close ✕ <span class="kbd-inline">Esc</span></button>
     </div>
     <template x-if="cur()">
       <div class="rev-body">
@@ -271,7 +271,7 @@
   </div>
 </template>
 
-<footer>
+<footer :inert="review">
   <span>auto-saves on edit → <b>Astro hot-reloads</b></span>
   <span><b x-text="backups"></b> local backups</span>
   <button class="linkish" @click="restoreLast()">undo last edit</button>
@@ -294,6 +294,9 @@ function studio(){
       try{ this.backups=JSON.parse(localStorage.getItem('i18nstudio.backups')||'[]').length; }catch{}
       this.refresh();
       for(const p of ['q','fStatus','fFile','sort','source','target']) this.$watch(p, ()=>this.refresh());
+      // source and target must differ; if one is set to match the other, bump the other
+      this.$watch('source',(v)=>{ if(v===this.target){ const o=this.langs.find(l=>l!==v); if(o) this.target=o; } });
+      this.$watch('target',(v)=>{ if(v===this.source){ const o=this.langs.find(l=>l!==v); if(o) this.source=o; } });
     },
 
     skey(file,lang,path){ return file+'::'+lang+'::'+path; },
