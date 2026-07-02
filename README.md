@@ -29,9 +29,12 @@ only: `cd ~/ai_projects/i18n-studio && npm install`.
   reference and any as the editable target; switch either from the header. Scales
   past two languages without a wall of columns.
 - **Filters + sort.** Filter by free text (key or value), by status
-  (all / untranslated / pending / accepted / duplicates), and by file. Sort by
-  file order, path, status, or duplicates-first. Live counts of
-  accepted / pending / untranslated for the current target.
+  (all / untranslated / pending / accepted / duplicates / code-like), and by file.
+  Sort by file order, path, status, or duplicates-first. Live counts of
+  accepted / pending / untranslated / code for the current target.
+- **Hide code-like values.** Asset paths (`/img/x.png`), CSS (`var(--x)`, `#0c1116`),
+  class names and other identifiers are detected and hidden from the translation
+  queue by default (`hide code`); flip to SHOW → code-like to review them.
 - **Review acceptance.** Mark a translation accepted; it stays accepted only while
   the value is unchanged (any edit drops it back to pending). Stored in a sidecar
   `.i18n-status.json` next to the strings (see below).

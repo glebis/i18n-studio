@@ -37,6 +37,7 @@
   .b-pending{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,var(--border))}
   .b-empty{color:var(--err);border-color:color-mix(in srgb,var(--err) 40%,var(--border))}
   .b-dup{color:var(--lead);border-color:color-mix(in srgb,var(--lead) 45%,var(--border))}
+  .b-code{color:var(--muted);border-style:dashed}
   .b-ro{color:var(--muted)}
   .cell{display:flex;flex-direction:column;gap:5px}
   .lang{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
@@ -112,7 +113,11 @@
         <option value="pending">pending</option>
         <option value="accepted">accepted</option>
         <option value="duplicates">duplicates</option>
+        <option value="code">code-like</option>
       </select>
+    </label>
+    <label class="ctl" title="Hide asset paths, CSS vars, class names and similar non-translatable values">
+      <input type="checkbox" x-model="hideCode" /> hide&nbsp;code
     </label>
     <label class="ctl">file
       <select x-model="fFile" aria-label="Filter by file">
@@ -134,6 +139,7 @@
       <span class="c-ok"><b x-text="tally.accepted"></b> accepted</span>
       <span class="c-warn"><b x-text="tally.pending"></b> pending</span>
       <span class="c-mut"><b x-text="tally.empty"></b> untranslated</span>
+      <span class="c-mut"><b x-text="tally.code"></b> code</span>
       <span>of <b x-text="tally.total"></b> in <b x-text="target"></b></span>
     </div>
   </div>
@@ -153,6 +159,7 @@
         <span class="file-tag" x-text="row.file"></span>
         <div class="badges">
           <span class="badge" :class="'b-'+st(row)" x-text="st(row)"></span>
+          <template x-if="rowCode(row)"><span class="badge b-code">code</span></template>
           <template x-if="dupN(row)>1"><span class="badge b-dup" x-text="'×'+dupN(row)"></span></template>
         </div>
       </div>
@@ -294,8 +301,8 @@
 function studio(){
   return {
     files:[], langs:[], source:'', target:'',
-    q:'', fStatus:'all', fFile:'all', sort:'file',
-    rows:[], cap:150, dup:{}, tally:{total:0,accepted:0,pending:0,empty:0},
+    q:'', fStatus:'all', fFile:'all', sort:'file', hideCode:true,
+    rows:[], cap:150, dup:{}, tally:{total:0,accepted:0,pending:0,empty:0,code:0},
     sugs:{}, loadingKey:null, timers:{}, pending:{}, saves:{}, backups:0, notice:'',
     dupPrompt:null, review:false, rev:0, zen:false,
 
@@ -305,7 +312,7 @@ function studio(){
       this.source=r.langs[0]||''; this.target=r.langs[1]||r.langs[0]||'';
       try{ this.backups=JSON.parse(localStorage.getItem('i18nstudio.backups')||'[]').length; }catch{}
       this.refresh();
-      for(const p of ['q','fStatus','fFile','sort','source','target']) this.$watch(p, ()=>this.refresh());
+      for(const p of ['q','fStatus','fFile','sort','source','target','hideCode']) this.$watch(p, ()=>this.refresh());
       // source and target must differ; if one is set to match the other, bump the other
       this.$watch('source',(v)=>{ if(v===this.target){ const o=this.langs.find(l=>l!==v); if(o) this.target=o; } });
       this.$watch('target',(v)=>{ if(v===this.source){ const o=this.langs.find(l=>l!==v); if(o) this.source=o; } });
@@ -314,6 +321,19 @@ function studio(){
     skey(file,lang,path){ return file+'::'+lang+'::'+path; },
     trunc(s){ s=String(s??''); return s.length>48?s.slice(0,48)+'…':s; },
     isEmpty(cell){ return !cell || cell.value==null || String(cell.value).trim()===''; },
+    // code-like: paths, CSS vars/values, hex, urls, kebab/file identifiers — not prose to translate
+    isCodeLike(v){ v=String(v==null?'':v).trim(); if(!v) return false;
+      if(/^var\(--/i.test(v)||/^calc\(/i.test(v)||/^#[0-9a-f]{3,8}$/i.test(v)||/^--[a-z0-9-]+$/i.test(v)||/^https?:\/\//i.test(v)) return true;
+      if(/\s/.test(v)) return /^[\d.]+(px|rem|em|%|vh|vw|fr|deg|s|ms)\b/i.test(v);   // spaced: only CSS value lists
+      if(v[0]==='/') return true;                                                    // path
+      if(/\.(png|jpe?g|svg|webp|gif|avif|ico|mp4|webm|woff2?|css|js|ts|json)$/i.test(v)) return true; // file/asset
+      if(/^[a-z][a-z0-9]*(-[a-z0-9]+)+$/.test(v)) return true;                       // kebab class/id
+      return false; },
+    // an entry is code-like if its target (or the source, when target is empty) reads as code
+    rowCode(row){ const t=row.e[this.target], s=row.e[this.source];
+      const tv=t&&t.editable&&!this.isEmpty(t)?t.value:null;
+      const sv=s&&s.editable?s.value:null;
+      return this.isCodeLike(tv!=null?tv:(sv!=null?sv:'')); },
 
     // per-row target status: computed | empty | accepted | pending
     st(row){ const c=row.e[this.target];
@@ -333,10 +353,14 @@ function studio(){
       if(f==='pending') return s==='pending';
       if(f==='accepted') return s==='accepted';
       if(f==='duplicates') return this.dupN(row)>1;
+      if(f==='code') return this.rowCode(row);
       return true; },
-    recount(){ // live counts over all editable target cells (cheap corpus loop)
-      const t={total:0,accepted:0,pending:0,empty:0};
+    recount(){ // live counts; code-like cells are their own bucket, not pending/untranslated
+      const t={total:0,accepted:0,pending:0,empty:0,code:0};
       for(const f of this.files) for(const e of f.entries){ const c=e[this.target]; if(!c||!c.editable) continue;
+        const s=e[this.source];
+        const codeVal=!this.isEmpty(c)?c.value:(s&&s.editable?s.value:'');
+        if(this.isCodeLike(codeVal)){ t.code++; continue; }
         t.total++; if(this.isEmpty(c)) t.empty++; else if(c.accepted) t.accepted++; else t.pending++; }
       this.tally=t; },
     refresh(){
@@ -349,6 +373,7 @@ function studio(){
       let rows=[];
       for(const f of this.files){ if(this.fFile!=='all'&&f.file!==this.fFile) continue;
         for(const e of f.entries){ if(!this.matchText(e)) continue; const row={file:f.file,e};
+          if(this.fStatus!=='code' && this.hideCode && this.rowCode(row)) continue;
           if(this.passStatus(row)) rows.push(row); } }
       const order={empty:0,pending:1,ro:2,accepted:3};
       if(this.sort==='path') rows.sort((a,b)=>a.e.path.localeCompare(b.e.path));
