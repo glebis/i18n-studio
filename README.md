@@ -41,13 +41,19 @@ only: `cd ~/ai_projects/i18n-studio && npm install`.
 - **Fullscreen review mode.** Step through the filtered set one entry at a time,
   fully keyboard driven, with the shortcut legend always visible:
   `←/→` or `j/k` prev·next, `a` accept & next, `p` mark pending, `e` edit,
-  `s` suggest, `1/2/3` apply a suggestion, `u` undo, `Esc` close.
+  `s` suggest, `1/2/3` apply a suggestion, `u` undo, `Esc` close, `>` focus.
+  Pressing Tab lands directly on the edit field. Clicking the file name filters
+  the list to that file.
+- **Focus mode.** `Shift + .` (`>`) hides all chrome (header, filters, footer,
+  review bar and legend), leaving only the strings. Press again to restore.
+- **Source ≠ target.** The two languages can never be the same; picking a match
+  bumps the other.
 - **Suggestions.** Claude proposes 3 translations from the source language,
   preserving HTML tags/entities and tone.
 - **Auto-save + undo.** Edits debounce (500 ms) and write straight to the `.ts`
   file; the last 200 edits are kept in `localStorage` with an undo control.
 
-Large corpora: the list renders up to 400 filtered rows (a notice shows the rest);
+Large corpora: the list renders up to 150 filtered rows (a notice shows the rest);
 narrow the filter or use review mode to go through everything.
 
 ## Configuration (flags > env > default)

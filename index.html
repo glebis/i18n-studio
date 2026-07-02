@@ -47,7 +47,12 @@
   textarea.accepted{border-color:color-mix(in srgb,var(--ok) 55%,var(--border))}
   .src-wrap{display:flex;flex-direction:column;gap:5px}
   .rowacts{display:flex;flex-direction:column;gap:6px;align-items:flex-end;padding-top:2px}
-  .acc{min-width:96px;text-align:center}
+  .rowacts button{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+  .icn{width:13px;height:13px;flex:none;display:inline-block;background-position:center;background-repeat:no-repeat;background-size:contain;opacity:.8}
+  .icn-accept{background-image:url(/assets/accept.png?v=2)}
+  .icn-suggest{background-image:url(/assets/suggest.png?v=2)}
+  .acc.on .icn,button:hover .icn{opacity:1}
+  .acc{min-width:104px}
   .acc.on{border-color:var(--ok);color:var(--ok)}
   .save-state{font-size:10px} .saving{color:var(--warn)}.saved{color:var(--ok)}.err{color:var(--err)}
   .sugs{display:flex;flex-direction:column;gap:4px;margin-top:2px}
@@ -68,19 +73,21 @@
   .rev-top{display:flex;align-items:center;gap:16px;padding:14px 22px;border-bottom:1px solid var(--border);color:var(--muted);font-size:12px;flex-wrap:wrap}
   .rev-top .prog{color:var(--ink);font-size:13px}
   .rev-body{flex:1;overflow:auto;padding:30px 22px;max-width:900px;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:20px}
-  .rev-file{color:var(--muted);font-size:12px}
+  .rev-file{color:var(--muted);font-size:12px;background:none;border:0;padding:0;cursor:pointer;font-family:inherit}
+  .rev-file:hover{color:var(--lead);text-decoration:underline}
   .rev-path{color:var(--ink);font-size:20px;word-break:break-all}
   .rev-block .lbl{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;display:flex;gap:10px;align-items:center}
   .rev-src{background:var(--panel);border:1px dashed var(--border);border-radius:10px;padding:14px 16px;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere}
   .rev-body textarea{font-size:16px;min-height:90px}
-  .rev-legend{border-top:1px solid var(--border);padding:12px 22px;display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--muted);background:var(--panel)}
+  .rev-legend{border-top:1px solid var(--border);padding:12px 22px;display:flex;gap:14px;flex-wrap:nowrap;overflow-x:auto;white-space:nowrap;font-size:11px;color:var(--muted);background:var(--panel)}
+  .rev-legend span{flex:none}
   .rev-legend kbd{display:inline-block;min-width:16px;text-align:center;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--ink);margin-right:5px}
   .kbd-inline{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0 5px;color:var(--ink);font-size:10px}
 </style>
 </head>
 <body x-data="studio()" x-init="init()" @keydown.window="onKey($event)">
 
-<header :inert="review">
+<header :inert="review" x-show="!zen">
   <div class="hrow">
     <h1>i18n&nbsp;Studio</h1>
     <input type="search" placeholder="filter by key or text…" aria-label="Filter by key or text" x-model.debounce.200ms="q" />
@@ -133,7 +140,7 @@
 </header>
 
 <main :inert="review">
-  <div class="cols"><span>file · key</span><span x-text="source+' (source)'"></span><span x-text="target+' (target)'"></span><span></span></div>
+  <div class="cols" x-show="!zen"><span>file · key</span><span x-text="source+' (source)'"></span><span x-text="target+' (target)'"></span><span></span></div>
 
   <template x-if="!rows.length">
     <div class="empty-note">No entries match the current filters.</div>
@@ -183,11 +190,16 @@
         <template x-if="row.e[target] && row.e[target].editable">
           <button class="acc" :class="row.e[target].accepted?'on':''"
             @click="toggleAccept(row)"
-            :aria-pressed="row.e[target].accepted?'true':'false'"
-            x-text="row.e[target].accepted?'✓ accepted':'accept'"></button>
+            :aria-pressed="row.e[target].accepted?'true':'false'">
+            <span class="icn icn-accept" aria-hidden="true"></span>
+            <span x-text="row.e[target].accepted?'accepted':'accept'"></span>
+          </button>
         </template>
         <template x-if="row.e[target] && row.e[target].editable">
-          <button @click="suggest(row)" x-text="loadingKey===skey(row.file,target,row.e.path)?'…':'suggest'"></button>
+          <button @click="suggest(row)">
+            <span class="icn icn-suggest" aria-hidden="true"></span>
+            <span x-text="loadingKey===skey(row.file,target,row.e.path)?'…':'suggest'"></span>
+          </button>
         </template>
         <span class="save-state" :class="saveState(row)" x-text="saveText(row)"></span>
       </div>
@@ -214,7 +226,7 @@
 <!-- fullscreen review -->
 <template x-if="review">
   <div class="review" role="dialog" aria-label="Review entries">
-    <div class="rev-top">
+    <div class="rev-top" x-show="!zen">
       <span class="prog"><b x-text="rev+1"></b> / <span x-text="rows.length"></span></span>
       <span x-text="'target: '+target+'  ·  source: '+source"></span>
       <span x-text="'filter: '+fStatus"></span>
@@ -225,7 +237,7 @@
     <template x-if="cur()">
       <div class="rev-body">
         <div>
-          <div class="rev-file" x-text="cur().file"></div>
+          <button class="rev-file" @click="fFile=cur().file; closeReview()" title="Filter the list to this file" x-text="cur().file"></button>
           <div class="rev-path" x-text="cur().e.path"></div>
           <div class="badges" style="margin-top:8px">
             <span class="badge" :class="'b-'+st(cur())" x-text="st(cur())"></span>
@@ -258,20 +270,20 @@
         </div>
       </div>
     </template>
-    <div class="rev-legend">
-      <span><kbd>←</kbd><kbd>→</kbd>/<kbd>j</kbd><kbd>k</kbd> prev · next</span>
-      <span><kbd>a</kbd> accept &amp; next</span>
-      <span><kbd>p</kbd> mark pending</span>
+    <div class="rev-legend" x-show="!zen">
+      <span><kbd>←</kbd><kbd>→</kbd><kbd>j</kbd><kbd>k</kbd> move</span>
+      <span><kbd>a</kbd> accept</span>
+      <span><kbd>p</kbd> pending</span>
       <span><kbd>e</kbd> edit</span>
       <span><kbd>s</kbd> suggest</span>
-      <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> apply suggestion</span>
+      <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> apply</span>
       <span><kbd>u</kbd> undo</span>
-      <span><kbd>Esc</kbd> close (from edit: back to keys)</span>
+      <span><kbd>&gt;</kbd> focus</span>
     </div>
   </div>
 </template>
 
-<footer :inert="review">
+<footer :inert="review" x-show="!zen">
   <span>auto-saves on edit → <b>Astro hot-reloads</b></span>
   <span><b x-text="backups"></b> local backups</span>
   <button class="linkish" @click="restoreLast()">undo last edit</button>
@@ -283,9 +295,9 @@ function studio(){
   return {
     files:[], langs:[], source:'', target:'',
     q:'', fStatus:'all', fFile:'all', sort:'file',
-    rows:[], cap:400, dup:{}, tally:{total:0,accepted:0,pending:0,empty:0},
+    rows:[], cap:150, dup:{}, tally:{total:0,accepted:0,pending:0,empty:0},
     sugs:{}, loadingKey:null, timers:{}, pending:{}, saves:{}, backups:0, notice:'',
-    dupPrompt:null, review:false, rev:0,
+    dupPrompt:null, review:false, rev:0, zen:false,
 
     async init(){
       const r=await fetch('/api/strings').then(r=>r.json());
@@ -405,7 +417,10 @@ function studio(){
     closeReview(){ this.review=false; },
     go(d){ if(!this.rows.length) return; this.rev=Math.max(0,Math.min(this.rows.length-1,this.rev+d));
       this.sugs={}; },
-    onKey(ev){ if(!this.review) return; const tag=(ev.target.tagName||'').toLowerCase();
+    onKey(ev){ const tag=(ev.target.tagName||'').toLowerCase();
+      // Shift+. (>) toggles focus mode everywhere — hides all chrome, leaving only content
+      if(ev.key==='>' && tag!=='textarea' && tag!=='input'){ this.zen=!this.zen; ev.preventDefault(); return; }
+      if(!this.review) return;
       if(tag==='textarea'){ if(ev.key==='Escape'){ ev.target.blur(); ev.preventDefault(); } return; }
       if(tag==='select'||tag==='input') return;
       const row=this.cur(); const k=ev.key;

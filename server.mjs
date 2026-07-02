@@ -96,6 +96,14 @@ app.post('/api/suggest', async (c) => {
 // Single-page frontend, read from the tool's own dir so it works from any cwd.
 app.get('/', (c) => c.html(readFileSync(join(HERE, 'index.html'), 'utf8')));
 
+// Bundled UI icons (allow-listed, no path traversal).
+const ASSETS = { 'accept.png': 'image/png', 'suggest.png': 'image/png' };
+app.get('/assets/:name', (c) => {
+  const type = ASSETS[c.req.param('name')];
+  if (!type) return c.text('not found', 404);
+  return c.body(readFileSync(join(HERE, 'assets', c.req.param('name'))), 200, { 'content-type': type, 'cache-control': 'max-age=86400' });
+});
+
 function parseList(text) {
   if (!text) return [];
   const fence = text.replace(/```json?/gi, '').replace(/```/g, '').trim();
