@@ -19,19 +19,50 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { readAll, write, LANGS, STRINGS_DIR } from './strings.mjs';
 import { langName, VOICE, PORT } from './config.mjs';
+import { readStatus, isAccepted, setAccepted, clearAccepted } from './status.mjs';
 
 const app = new Hono();
 
-app.get('/api/strings', (c) => c.json({ langs: LANGS, files: readAll() }));
+// Corpus + review state. Each editable cell gets `accepted` computed from the
+// sidecar (true only while the value still matches the accepted hash).
+app.get('/api/strings', (c) => {
+  const status = readStatus();
+  const files = readAll();
+  for (const f of files) for (const e of f.entries) for (const lang of LANGS) {
+    const cell = e[lang];
+    if (cell && cell.editable) cell.accepted = isAccepted(status, f.file, lang, e.path, cell.value);
+  }
+  return c.json({ langs: LANGS, files });
+});
 
 app.post('/api/save', async (c) => {
   const { file, lang, path, value } = await c.req.json();
   try {
     const saved = write(file, lang, path, value);
+    clearAccepted(file, lang, path); // an edit drops acceptance back to pending
     return c.json({ ok: true, saved });
   } catch (e) {
     return c.json({ ok: false, error: String(e.message || e) }, 400);
   }
+});
+
+// Batch write, used for duplicate propagation ("apply to all N").
+app.post('/api/save-many', async (c) => {
+  const { edits } = await c.req.json();
+  if (!Array.isArray(edits)) return c.json({ ok: false, error: 'edits[] required' }, 400);
+  const results = edits.map(({ file, lang, path, value }) => {
+    try { write(file, lang, path, value); clearAccepted(file, lang, path); return { ok: true, file, lang, path }; }
+    catch (e) { return { ok: false, file, lang, path, error: String(e.message || e) }; }
+  });
+  return c.json({ ok: true, results });
+});
+
+// Toggle review acceptance for one cell (value comes from the client, which
+// holds the just-saved on-disk text).
+app.post('/api/accept', async (c) => {
+  const { file, lang, path, value, accepted } = await c.req.json();
+  try { setAccepted(file, lang, path, !!accepted, value); return c.json({ ok: true }); }
+  catch (e) { return c.json({ ok: false, error: String(e.message || e) }, 400); }
 });
 
 app.post('/api/suggest', async (c) => {

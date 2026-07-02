@@ -6,86 +6,271 @@
 <title>i18n Studio</title>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 <style>
-  :root{--bg:#0c1116;--panel:#0f151c;--ink:#f4f6f8;--muted:#aab3bd;--border:#262d35;--lead:#bc9afa;--ok:#82d2cf;--warn:#f1e170;--err:#f5877f}
+  :root{--bg:#0c1116;--panel:#0f151c;--panel2:#131b24;--ink:#f4f6f8;--muted:#aab3bd;--border:#262d35;--lead:#bc9afa;--ok:#82d2cf;--warn:#f1e170;--err:#f5877f}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 ui-monospace,"Monaspace Neon",SFMono-Regular,Menlo,monospace}
-  header{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--border);padding:12px 18px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
-  header h1{font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0;font-weight:700}
-  input[type=search]{flex:1;min-width:200px;background:var(--bg);border:1px solid var(--border);color:var(--ink);border-radius:8px;padding:8px 12px;font:inherit}
-  .stat{color:var(--muted);font-size:12px}
-  .stat b{color:var(--lead)}
-  main{padding:14px 18px 120px;max-width:1200px;margin:0 auto}
-  .file{margin:22px 0 6px;color:var(--warn);font-weight:700;letter-spacing:.05em;font-size:14px}
-  .row{display:grid;grid-template-columns:220px 1fr 1fr;gap:12px;padding:10px 0;border-top:1px solid var(--border);align-items:start;
-       content-visibility:auto;contain-intrinsic-size:auto 120px}
+  header{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--border);padding:10px 18px;display:flex;flex-direction:column;gap:9px}
+  .hrow{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  h1{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0;font-weight:700;white-space:nowrap}
+  input[type=search]{flex:1;min-width:180px;background:var(--bg);border:1px solid var(--border);color:var(--ink);border-radius:8px;padding:7px 12px;font:inherit}
+  select{background:var(--bg);border:1px solid var(--border);color:var(--ink);border-radius:7px;padding:6px 8px;font:inherit;font-size:12px}
+  label.ctl{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  .arrow{color:var(--muted)}
+  .counts{display:flex;gap:14px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+  .counts b{color:var(--ink)} .counts .c-ok{color:var(--ok)} .counts .c-warn{color:var(--warn)} .counts .c-mut{color:var(--muted)}
+  .spacer{flex:1}
+  button{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:6px 12px;font:inherit;font-size:11px;cursor:pointer;white-space:nowrap}
+  button:hover{border-color:var(--lead);color:var(--ink)}
+  button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--lead);outline-offset:2px}
+  .btn-key{border-color:var(--lead);color:var(--ink)}
+  main{padding:8px 18px 96px;max-width:1180px;margin:0 auto}
+  .cols{display:grid;grid-template-columns:230px 1fr 1fr auto;gap:12px;padding:8px 0;color:var(--muted);font-size:10px;letter-spacing:.12em;text-transform:uppercase;position:sticky;top:96px;background:var(--bg);z-index:3;border-bottom:1px solid var(--border)}
+  .row{display:grid;grid-template-columns:230px 1fr 1fr auto;gap:12px;padding:11px 0;border-bottom:1px solid var(--border);align-items:start;
+       content-visibility:auto;contain-intrinsic-size:auto 110px}
   .row>*{min-width:0}
-  .key{color:var(--muted);font-size:12px;word-break:break-all;padding-top:8px}
+  .meta{display:flex;flex-direction:column;gap:4px;padding-top:4px}
+  .path{color:var(--ink);font-size:12px;word-break:break-all}
+  .file-tag{color:var(--muted);font-size:11px}
+  .badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+  .badge{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;padding:2px 6px;border-radius:4px;border:1px solid var(--border);color:var(--muted)}
+  .b-accepted{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,var(--border))}
+  .b-pending{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,var(--border))}
+  .b-empty{color:var(--err);border-color:color-mix(in srgb,var(--err) 40%,var(--border))}
+  .b-dup{color:var(--lead);border-color:color-mix(in srgb,var(--lead) 45%,var(--border))}
+  .b-ro{color:var(--muted)}
   .cell{display:flex;flex-direction:column;gap:5px}
+  .lang{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
   textarea{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--ink);border-radius:8px;padding:8px 10px;font:inherit;resize:vertical;min-height:38px;field-sizing:content;overflow-wrap:anywhere}
   textarea:focus{outline:none;border-color:var(--lead)}
-  textarea:focus-visible{outline:2px solid var(--lead);outline-offset:1px}
   textarea.ro{color:var(--muted);border-style:dashed;background:transparent}
-  .cellbar{display:flex;gap:8px;align-items:center;font-size:11px;color:var(--muted)}
-  button{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px 11px;font:inherit;font-size:11px;cursor:pointer}
-  button:hover{border-color:var(--lead);color:var(--ink)}
-  button:focus-visible,a:focus-visible{outline:2px solid var(--lead);outline-offset:2px}
-  .saved{color:var(--ok)}.saving{color:var(--warn)}.err{color:var(--err)}
+  textarea.src{color:var(--muted);background:var(--panel);border-style:dashed}
+  textarea.accepted{border-color:color-mix(in srgb,var(--ok) 55%,var(--border))}
+  .src-wrap{display:flex;flex-direction:column;gap:5px}
+  .rowacts{display:flex;flex-direction:column;gap:6px;align-items:flex-end;padding-top:2px}
+  .acc{min-width:96px;text-align:center}
+  .acc.on{border-color:var(--ok);color:var(--ok)}
+  .save-state{font-size:10px} .saving{color:var(--warn)}.saved{color:var(--ok)}.err{color:var(--err)}
   .sugs{display:flex;flex-direction:column;gap:4px;margin-top:2px}
-  .sug{text-align:left;white-space:normal;line-height:1.4;border-color:var(--lead);color:var(--ink)}
-  .lang{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
-  .ro-tag{color:var(--warn)}
-  footer{position:fixed;bottom:0;left:0;right:0;background:var(--panel);border-top:1px solid var(--border);padding:8px 18px;font-size:12px;color:var(--muted);display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  .sug{text-align:left;white-space:normal;line-height:1.4;border-color:var(--lead);color:var(--ink);font-size:12px}
+  .empty-note{color:var(--muted);padding:30px 0;text-align:center}
+  .cap-note{color:var(--warn);padding:16px 0;text-align:center;font-size:12px}
+  footer{position:fixed;bottom:0;left:0;right:0;background:var(--panel);border-top:1px solid var(--border);padding:8px 18px;font-size:12px;color:var(--muted);display:flex;gap:18px;align-items:center;flex-wrap:wrap;z-index:5}
   footer b{color:var(--ink)}
   .linkish{border:0;background:none;color:var(--lead);text-decoration:underline;padding:0;font-size:12px;cursor:pointer}
   .notice{color:var(--ok)}
+  /* duplicate propagation banner */
+  .dupbar{position:fixed;left:50%;transform:translateX(-50%);bottom:52px;z-index:8;background:var(--panel2);border:1px solid var(--lead);border-radius:10px;padding:12px 16px;display:flex;gap:14px;align-items:center;max-width:760px;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+  .dupbar .txt{font-size:12.5px;color:var(--ink)}
+  .dupbar .txt b{color:var(--lead)}
+  .dupbar .old{color:var(--muted)}
+  /* fullscreen review */
+  .review{position:fixed;inset:0;z-index:20;background:var(--bg);display:flex;flex-direction:column}
+  .rev-top{display:flex;align-items:center;gap:16px;padding:14px 22px;border-bottom:1px solid var(--border);color:var(--muted);font-size:12px;flex-wrap:wrap}
+  .rev-top .prog{color:var(--ink);font-size:13px}
+  .rev-body{flex:1;overflow:auto;padding:30px 22px;max-width:900px;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:20px}
+  .rev-file{color:var(--muted);font-size:12px}
+  .rev-path{color:var(--ink);font-size:20px;word-break:break-all}
+  .rev-block .lbl{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;display:flex;gap:10px;align-items:center}
+  .rev-src{background:var(--panel);border:1px dashed var(--border);border-radius:10px;padding:14px 16px;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere}
+  .rev-body textarea{font-size:16px;min-height:90px}
+  .rev-legend{border-top:1px solid var(--border);padding:12px 22px;display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--muted);background:var(--panel)}
+  .rev-legend kbd{display:inline-block;min-width:16px;text-align:center;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--ink);margin-right:5px}
+  .kbd-inline{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0 5px;color:var(--ink);font-size:10px}
 </style>
 </head>
-<body x-data="studio()" x-init="load()">
+<body x-data="studio()" x-init="init()" @keydown.window="onKey($event)">
+
 <header>
-  <h1>i18n&nbsp;Studio</h1>
-  <input type="search" placeholder="filter by key or text…" aria-label="Filter strings by key or text" x-model.debounce.250ms="q" />
-  <span class="stat"><b x-text="visibleCount()"></b> / <span x-text="totalCount()"></span> strings · <b x-text="langs.join('·')"></b></span>
+  <div class="hrow">
+    <h1>i18n&nbsp;Studio</h1>
+    <input type="search" placeholder="filter by key or text…" aria-label="Filter by key or text" x-model.debounce.200ms="q" />
+    <label class="ctl">src
+      <select x-model="source" aria-label="Source language">
+        <template x-for="l in langs" :key="l"><option :value="l" x-text="l"></option></template>
+      </select>
+    </label>
+    <span class="arrow">→</span>
+    <label class="ctl">target
+      <select x-model="target" aria-label="Target language">
+        <template x-for="l in langs" :key="l"><option :value="l" x-text="l"></option></template>
+      </select>
+    </label>
+    <button class="btn-key" @click="openReview()" :disabled="!rows.length" title="Review filtered entries one-by-one (keyboard)">review ▸</button>
+  </div>
+  <div class="hrow">
+    <label class="ctl">show
+      <select x-model="fStatus" aria-label="Filter by status">
+        <option value="all">all</option>
+        <option value="untranslated">untranslated</option>
+        <option value="pending">pending</option>
+        <option value="accepted">accepted</option>
+        <option value="duplicates">duplicates</option>
+      </select>
+    </label>
+    <label class="ctl">file
+      <select x-model="fFile" aria-label="Filter by file">
+        <option value="all">all files</option>
+        <template x-for="f in files" :key="f.file"><option :value="f.file" x-text="f.file"></option></template>
+      </select>
+    </label>
+    <label class="ctl">sort
+      <select x-model="sort" aria-label="Sort by">
+        <option value="file">file order</option>
+        <option value="path">path a–z</option>
+        <option value="status">status</option>
+        <option value="dupes">duplicates first</option>
+      </select>
+    </label>
+    <span class="spacer"></span>
+    <div class="counts" aria-live="polite">
+      <span><b x-text="rows.length"></b> shown</span>
+      <span class="c-ok"><b x-text="tally.accepted"></b> accepted</span>
+      <span class="c-warn"><b x-text="tally.pending"></b> pending</span>
+      <span class="c-mut"><b x-text="tally.empty"></b> untranslated</span>
+      <span>of <b x-text="tally.total"></b> in <b x-text="target"></b></span>
+    </div>
+  </div>
 </header>
+
 <main>
-  <template x-for="f in files" :key="f.file">
-    <section x-show="fileVisible(f)">
-      <h2 class="file" x-text="f.file"></h2>
-      <template x-for="e in f.entries" :key="e.path">
-        <div class="row" x-show="rowVisible(e)">
-          <div class="key" x-text="e.path"></div>
-          <template x-for="lang in langs" :key="lang">
-            <div class="cell">
-              <div class="cellbar">
-                <span class="lang" x-text="lang"></span>
-                <template x-if="e[lang] && e[lang].editable">
-                  <span role="status" :class="statusClass(f.file,lang,e.path)" x-text="statusText(f.file,lang,e.path)"></span>
-                </template>
-                <template x-if="e[lang] && e[lang].editable">
-                  <button @click="suggest(f.file,e,lang)"
-                          :aria-label="'Suggest '+lang+' translations for '+f.file+' '+e.path"
-                          x-text="loadingKey===skey(f.file,lang,e.path)?'…':'suggest'"></button>
-                </template>
-                <template x-if="e[lang] && !e[lang].editable"><span class="ro-tag">computed · read-only</span></template>
-                <template x-if="!e[lang]"><span>—</span></template>
-              </div>
-              <template x-if="e[lang]">
-                <textarea :class="e[lang].editable?'':'ro'" :readonly="!e[lang].editable"
-                  :aria-label="f.file+' · '+e.path+' · '+lang"
-                  :value="e[lang].value"
-                  @input="e[lang].editable && onEdit(f.file,lang,e,$event.target.value)"></textarea>
-              </template>
-              <div class="sugs">
-                <template x-for="(s,i) in (sugs[skey(f.file,lang,e.path)]||[])" :key="i">
-                  <button class="sug" @click="applySug(f.file,lang,e,s)" x-text="s"></button>
-                </template>
-              </div>
-            </div>
+  <div class="cols"><span>file · key</span><span x-text="source+' (source)'"></span><span x-text="target+' (target)'"></span><span></span></div>
+
+  <template x-if="!rows.length">
+    <div class="empty-note">No entries match the current filters.</div>
+  </template>
+
+  <template x-for="(row,ri) in rows.slice(0,cap)" :key="row.file+'::'+row.e.path">
+    <div class="row">
+      <div class="meta">
+        <span class="path" x-text="row.e.path"></span>
+        <span class="file-tag" x-text="row.file"></span>
+        <div class="badges">
+          <span class="badge" :class="'b-'+st(row)" x-text="st(row)"></span>
+          <template x-if="dupN(row)>1"><span class="badge b-dup" x-text="'×'+dupN(row)"></span></template>
+        </div>
+      </div>
+
+      <div class="src-wrap">
+        <span class="lang" x-text="source"></span>
+        <template x-if="row.e[source]">
+          <textarea class="src" readonly :aria-label="source+' source · '+row.e.path" :value="row.e[source].value"></textarea>
+        </template>
+        <template x-if="!row.e[source]"><span class="file-tag">— (no source)</span></template>
+      </div>
+
+      <div class="cell">
+        <span class="lang" x-text="target"></span>
+        <template x-if="row.e[target] && row.e[target].editable">
+          <textarea :class="row.e[target].accepted?'accepted':''"
+            :aria-label="target+' target · '+row.e.path"
+            :value="row.e[target].value"
+            @input="onEdit(row,$event.target.value)"></textarea>
+        </template>
+        <template x-if="row.e[target] && !row.e[target].editable">
+          <textarea class="ro" readonly :value="row.e[target].value"></textarea>
+        </template>
+        <template x-if="!row.e[target]">
+          <textarea class="ro" readonly :placeholder="'— no '+target+' key; add it once in the .ts source'"></textarea>
+        </template>
+        <div class="sugs">
+          <template x-for="(s,i) in (sugs[skey(row.file,target,row.e.path)]||[])" :key="i">
+            <button class="sug" @click="applySug(row,s)" x-text="s"></button>
           </template>
         </div>
-      </template>
-    </section>
+      </div>
+
+      <div class="rowacts">
+        <template x-if="row.e[target] && row.e[target].editable">
+          <button class="acc" :class="row.e[target].accepted?'on':''"
+            @click="toggleAccept(row)"
+            :aria-pressed="row.e[target].accepted?'true':'false'"
+            x-text="row.e[target].accepted?'✓ accepted':'accept'"></button>
+        </template>
+        <template x-if="row.e[target] && row.e[target].editable">
+          <button @click="suggest(row)" x-text="loadingKey===skey(row.file,target,row.e.path)?'…':'suggest'"></button>
+        </template>
+        <span class="save-state" :class="saveState(row)" x-text="saveText(row)"></span>
+      </div>
+    </div>
+  </template>
+
+  <template x-if="rows.length>cap">
+    <div class="cap-note" x-text="'Showing '+cap+' of '+rows.length+' — narrow the filter, or open review ▸ to go through all of them.'"></div>
   </template>
 </main>
+
+<!-- duplicate propagation banner -->
+<template x-if="dupPrompt">
+  <div class="dupbar" role="dialog" aria-label="Apply to duplicates">
+    <span class="txt">
+      <b x-text="dupPrompt.siblings.length"></b> other entr<span x-text="dupPrompt.siblings.length===1?'y':'ies'"></span>
+      still read <span class="old" x-text="'“'+trunc(dupPrompt.oldValue)+'”'"></span>. Apply the new value to all?
+    </span>
+    <button class="btn-key" @click="applyDupAll()">apply to all</button>
+    <button @click="dupPrompt=null">dismiss</button>
+  </div>
+</template>
+
+<!-- fullscreen review -->
+<template x-if="review">
+  <div class="review" role="dialog" aria-label="Review entries">
+    <div class="rev-top">
+      <span class="prog"><b x-text="rev+1"></b> / <span x-text="rows.length"></span></span>
+      <span x-text="'target: '+target+'  ·  source: '+source"></span>
+      <span x-text="'filter: '+fStatus"></span>
+      <span class="spacer" style="flex:1"></span>
+      <span class="save-state" :class="cur()?saveState(cur()):''" x-text="cur()?saveText(cur()):''"></span>
+      <button @click="closeReview()">close ✕ <span class="kbd-inline">Esc</span></button>
+    </div>
+    <template x-if="cur()">
+      <div class="rev-body">
+        <div>
+          <div class="rev-file" x-text="cur().file"></div>
+          <div class="rev-path" x-text="cur().e.path"></div>
+          <div class="badges" style="margin-top:8px">
+            <span class="badge" :class="'b-'+st(cur())" x-text="st(cur())"></span>
+            <template x-if="dupN(cur())>1"><span class="badge b-dup" x-text="'×'+dupN(cur())+' duplicates'"></span></template>
+          </div>
+        </div>
+        <div class="rev-block">
+          <div class="lbl" x-text="source+' · source'"></div>
+          <div class="rev-src" x-text="cur().e[source]?cur().e[source].value:'— (no source)'"></div>
+        </div>
+        <div class="rev-block">
+          <div class="lbl"><span x-text="target+' · target'"></span></div>
+          <template x-if="cur().e[target] && !cur().e[target].editable">
+            <div class="rev-src" x-text="cur().e[target].value"></div>
+          </template>
+          <template x-if="!cur().e[target]">
+            <div class="rev-src" x-text="'— no '+target+' key; add it once in the .ts source'"></div>
+          </template>
+          <template x-if="cur().e[target] && cur().e[target].editable">
+            <textarea x-ref="revEdit"
+              :class="cur().e[target].accepted?'accepted':''"
+              :value="cur().e[target].value"
+              @input="onEdit(cur(),$event.target.value)"></textarea>
+          </template>
+          <div class="sugs" style="margin-top:8px">
+            <template x-for="(s,i) in (sugs[skey(cur().file,target,cur().e.path)]||[])" :key="i">
+              <button class="sug" @click="applySug(cur(),s)"><span class="kbd-inline" x-text="i+1"></span> <span x-text="s"></span></button>
+            </template>
+          </div>
+        </div>
+      </div>
+    </template>
+    <div class="rev-legend">
+      <span><kbd>←</kbd><kbd>→</kbd>/<kbd>j</kbd><kbd>k</kbd> prev · next</span>
+      <span><kbd>a</kbd> accept &amp; next</span>
+      <span><kbd>p</kbd> mark pending</span>
+      <span><kbd>e</kbd> edit</span>
+      <span><kbd>s</kbd> suggest</span>
+      <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> apply suggestion</span>
+      <span><kbd>u</kbd> undo</span>
+      <span><kbd>Esc</kbd> close (from edit: back to keys)</span>
+    </div>
+  </div>
+</template>
+
 <footer>
   <span>auto-saves on edit → <b>Astro hot-reloads</b></span>
   <span><b x-text="backups"></b> local backups</span>
@@ -96,78 +281,160 @@
 <script>
 function studio(){
   return {
-    files:[], langs:[], q:'', status:{}, sugs:{}, loadingKey:null, timers:{}, pending:{}, backups:0, notice:'',
-    async load(){ const r=await fetch('/api/strings').then(r=>r.json()); this.files=r.files; this.langs=r.langs;
-      try{ this.backups=JSON.parse(localStorage.getItem('i18nstudio.backups')||'[]').length; }catch{} },
-    skey(file,lang,path){ return file+'::'+lang+'::'+path; },
-    totalCount(){ let n=0; for(const f of this.files) for(const e of f.entries) for(const l of this.langs) if(e[l]&&e[l].editable) n++; return n; },
-    visibleCount(){ let n=0; for(const f of this.files) for(const e of f.entries){ if(!this.rowVisible(e))continue; for(const l of this.langs) if(e[l]&&e[l].editable) n++; } return n; },
-    match(e){ const q=this.q.trim().toLowerCase(); if(!q) return true;
-      if(e.path.toLowerCase().includes(q)) return true;
-      return this.langs.some(l=>e[l]&&String(e[l].value).toLowerCase().includes(q)); },
-    rowVisible(e){ return this.match(e); },
-    fileVisible(f){ return f.entries.some(e=>this.rowVisible(e)); },
-    statusText(file,lang,path){ const s=this.status[this.skey(file,lang,path)]; return s?({saving:'saving…',saved:'saved',err:'error'})[s.state]:''; },
-    statusClass(file,lang,path){ const s=this.status[this.skey(file,lang,path)]; return s?({saving:'saving',saved:'saved',err:'err'})[s.state]:''; },
-    onEdit(file,lang,e,value){
-      const k=this.skey(file,lang,e.path);
-      if(this.pending[k]===undefined) this.pending[k]=e[lang].value; // capture pre-edit value once per burst
-      e[lang].value=value;
-      this.status[k]={state:'saving'};
-      clearTimeout(this.timers[k]);
-      this.timers[k]=setTimeout(()=>this.save(file,lang,e,value),500);
+    files:[], langs:[], source:'', target:'',
+    q:'', fStatus:'all', fFile:'all', sort:'file',
+    rows:[], cap:400, dup:{}, tally:{total:0,accepted:0,pending:0,empty:0},
+    sugs:{}, loadingKey:null, timers:{}, pending:{}, saves:{}, backups:0, notice:'',
+    dupPrompt:null, review:false, rev:0,
+
+    async init(){
+      const r=await fetch('/api/strings').then(r=>r.json());
+      this.files=r.files; this.langs=r.langs;
+      this.source=r.langs[0]||''; this.target=r.langs[1]||r.langs[0]||'';
+      try{ this.backups=JSON.parse(localStorage.getItem('i18nstudio.backups')||'[]').length; }catch{}
+      this.refresh();
+      for(const p of ['q','fStatus','fFile','sort','source','target']) this.$watch(p, ()=>this.refresh());
     },
-    async save(file,lang,e,value){
-      const k=this.skey(file,lang,e.path);
+
+    skey(file,lang,path){ return file+'::'+lang+'::'+path; },
+    trunc(s){ s=String(s??''); return s.length>48?s.slice(0,48)+'…':s; },
+    isEmpty(cell){ return !cell || cell.value==null || String(cell.value).trim()===''; },
+
+    // per-row target status: computed | empty | accepted | pending
+    st(row){ const c=row.e[this.target];
+      if(c && !c.editable) return 'ro';
+      if(this.isEmpty(c)) return 'empty';
+      return c.accepted ? 'accepted' : 'pending'; },
+    dupN(row){ const c=row.e[this.target]; if(this.isEmpty(c)||(c&&!c.editable)) return 0; return this.dup[c.value]||0; },
+
+    // ---- filtering / sorting into a flat row list ----
+    matchText(e){ const q=this.q.trim().toLowerCase(); if(!q) return true;
+      if(e.path.toLowerCase().includes(q)) return true;
+      const t=e[this.target], s=e[this.source];
+      return (t&&String(t.value).toLowerCase().includes(q))||(s&&String(s.value).toLowerCase().includes(q)); },
+    passStatus(row){ const f=this.fStatus; if(f==='all') return true;
+      const s=this.st(row);
+      if(f==='untranslated') return s==='empty';
+      if(f==='pending') return s==='pending';
+      if(f==='accepted') return s==='accepted';
+      if(f==='duplicates') return this.dupN(row)>1;
+      return true; },
+    recount(){ // live counts over all editable target cells (cheap corpus loop)
+      const t={total:0,accepted:0,pending:0,empty:0};
+      for(const f of this.files) for(const e of f.entries){ const c=e[this.target]; if(!c||!c.editable) continue;
+        t.total++; if(this.isEmpty(c)) t.empty++; else if(c.accepted) t.accepted++; else t.pending++; }
+      this.tally=t; },
+    refresh(){
+      // duplicate index over the whole corpus for the current target lang
+      const dup={}; for(const f of this.files) for(const e of f.entries){ const c=e[this.target];
+        if(c&&c.editable&&!this.isEmpty(c)) dup[c.value]=(dup[c.value]||0)+1; }
+      this.dup=dup;
+      this.recount();
+      // build filtered rows
+      let rows=[];
+      for(const f of this.files){ if(this.fFile!=='all'&&f.file!==this.fFile) continue;
+        for(const e of f.entries){ if(!this.matchText(e)) continue; const row={file:f.file,e};
+          if(this.passStatus(row)) rows.push(row); } }
+      const order={empty:0,pending:1,ro:2,accepted:3};
+      if(this.sort==='path') rows.sort((a,b)=>a.e.path.localeCompare(b.e.path));
+      else if(this.sort==='status') rows.sort((a,b)=>order[this.st(a)]-order[this.st(b)]);
+      else if(this.sort==='dupes') rows.sort((a,b)=>this.dupN(b)-this.dupN(a));
+      this.rows=rows;
+      if(this.rev>=rows.length) this.rev=Math.max(0,rows.length-1);
+    },
+
+    // ---- editing / saving ----
+    onEdit(row,value){ const lang=this.target,k=this.skey(row.file,lang,row.e.path);
+      if(this.pending[k]===undefined) this.pending[k]=row.e[lang].value;
+      row.e[lang].value=value; row.e[lang].accepted=false;
+      this.saves[k]='saving'; clearTimeout(this.timers[k]);
+      this.timers[k]=setTimeout(()=>this.save(row,value),500); },
+    async save(row,value){ const lang=this.target,k=this.skey(row.file,lang,row.e.path);
       const prev=this.pending[k]; delete this.pending[k];
       const r=await fetch('/api/save',{method:'POST',headers:{'content-type':'application/json'},
-        body:JSON.stringify({file,lang,path:e.path,value})}).then(r=>r.json()).catch(err=>({ok:false,error:String(err)}));
-      this.status[k]={state:r.ok?'saved':'err'};
-      if(r.ok && prev!==undefined && prev!==value) this.backup(file,lang,e.path,prev,value);
-      if(r.ok) setTimeout(()=>{ if(this.status[k]?.state==='saved') this.status[k]=null; },1500);
-    },
-    async suggest(file,e,lang){
-      const from=this.langs.find(l=>l!==lang)||'en';
-      const src=e[from]; if(!src){ return; }
-      const k=this.skey(file,lang,e.path); this.loadingKey=k;
+        body:JSON.stringify({file:row.file,lang,path:row.e.path,value})}).then(r=>r.json()).catch(e=>({ok:false,error:String(e)}));
+      this.saves[k]=r.ok?'saved':'err';
+      if(r.ok){ this.recount();
+        if(prev!==undefined&&prev!==value){ this.backup(row.file,lang,row.e.path,prev,value); this.offerDup(row,prev,value); }
+        setTimeout(()=>{ if(this.saves[k]==='saved') this.saves[k]=null; },1400); }
+      else this.flash('Save failed: '+(r.error||'')); },
+    saveState(row){ return this.saves[this.skey(row.file,this.target,row.e.path)]||''; },
+    saveText(row){ return ({saving:'saving…',saved:'saved',err:'error'})[this.saveState(row)]||''; },
+
+    // ---- duplicate propagation ----
+    offerDup(row,oldValue,newValue){ if(!oldValue||oldValue===newValue){ this.dupPrompt=null; return; }
+      const sibs=[]; for(const f of this.files) for(const e of f.entries){ const c=e[this.target];
+        if(c&&c.editable&&c.value===oldValue&&!(f.file===row.file&&e.path===row.e.path)) sibs.push({file:f.file,e}); }
+      this.dupPrompt = sibs.length ? {oldValue,newValue,siblings:sibs} : null; },
+    async applyDupAll(){ const p=this.dupPrompt; if(!p) return;
+      const edits=p.siblings.map(s=>({file:s.file,lang:this.target,path:s.e.path,value:p.newValue}));
+      const r=await fetch('/api/save-many',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({edits})}).then(r=>r.json()).catch(e=>({ok:false}));
+      if(r.ok){ for(const s of p.siblings){ this.backup(s.file,this.target,s.e.path,p.oldValue,p.newValue);
+          s.e[this.target].value=p.newValue; s.e[this.target].accepted=false; }
+        this.flash('Applied to '+p.siblings.length+' duplicate'+(p.siblings.length===1?'':'s')+'.'); this.refresh(); }
+      else this.flash('Bulk apply failed.');
+      this.dupPrompt=null; },
+
+    // ---- acceptance ----
+    async toggleAccept(row){ const lang=this.target,c=row.e[lang]; if(!c||!c.editable||this.isEmpty(c)){ if(this.isEmpty(c)) this.flash('Nothing to accept — it is empty.'); return; }
+      const next=!c.accepted; c.accepted=next;
+      const r=await fetch('/api/accept',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({file:row.file,lang,path:row.e.path,value:c.value,accepted:next})}).then(r=>r.json()).catch(e=>({ok:false}));
+      if(!r.ok){ c.accepted=!next; this.flash('Could not update acceptance.'); } else this.recount(); },
+
+    // ---- suggestions ----
+    async suggest(row){ const lang=this.target,src=row.e[this.source];
+      if(!src||this.isEmpty(src)){ this.flash('No '+this.source+' source to translate from.'); return; }
+      const k=this.skey(row.file,lang,row.e.path); this.loadingKey=k;
       const r=await fetch('/api/suggest',{method:'POST',headers:{'content-type':'application/json'},
-        body:JSON.stringify({sourceText:src.value,from,to:lang,path:e.path})}).then(r=>r.json()).catch(err=>({ok:false}));
-      this.loadingKey=null;
-      this.sugs[k]= r.ok? r.suggestions : [];
-      if(!r.ok){ this.flash('Suggestion failed — try again.'); }
-    },
-    applySug(file,lang,e,s){
-      const k=this.skey(file,lang,e.path);
-      if(this.pending[k]===undefined) this.pending[k]=e[lang].value;
-      e[lang].value=s;
-      this.sugs[k]=[];
-      this.save(file,lang,e,s);
-    },
-    flash(msg){ this.notice=msg; setTimeout(()=>{ if(this.notice===msg) this.notice=''; },2500); },
-    // ---- localStorage backup ring (last 200 edits, {prev,next} per edit) ----
-    backup(file,lang,path,prev,next){
-      const key='i18nstudio.backups';
-      const arr=JSON.parse(localStorage.getItem(key)||'[]');
-      arr.push({file,lang,path,prev,next,ts:Date.now()});
-      while(arr.length>200) arr.shift();
-      localStorage.setItem(key,JSON.stringify(arr));
-      this.backups=arr.length;
-    },
-    async restoreLast(){
-      const key='i18nstudio.backups';
-      const arr=JSON.parse(localStorage.getItem(key)||'[]');
-      const last=arr.pop();
-      if(!last){ this.flash('Nothing to undo.'); return; }
+        body:JSON.stringify({sourceText:src.value,from:this.source,to:lang,path:row.e.path})}).then(r=>r.json()).catch(e=>({ok:false}));
+      this.loadingKey=null; this.sugs[k]= r.ok? r.suggestions : [];
+      if(!r.ok) this.flash('Suggestion failed — try again.'); },
+    applySug(row,s){ const lang=this.target,c=row.e[lang]; if(!c||!c.editable) return;
+      const k=this.skey(row.file,lang,row.e.path);
+      if(this.pending[k]===undefined) this.pending[k]=c.value;
+      c.value=s; c.accepted=false; this.sugs[k]=[]; this.save(row,s); },
+
+    // ---- review mode ----
+    cur(){ return this.rows[this.rev]||null; },
+    openReview(){ if(!this.rows.length) return; this.rev=Math.min(this.rev,this.rows.length-1); this.review=true; },
+    closeReview(){ this.review=false; },
+    go(d){ if(!this.rows.length) return; this.rev=Math.max(0,Math.min(this.rows.length-1,this.rev+d));
+      this.sugs={}; },
+    onKey(ev){ if(!this.review) return; const tag=(ev.target.tagName||'').toLowerCase();
+      if(tag==='textarea'){ if(ev.key==='Escape'){ ev.target.blur(); ev.preventDefault(); } return; }
+      if(tag==='select'||tag==='input') return;
+      const row=this.cur(); const k=ev.key;
+      if(k==='ArrowRight'||k==='j'){ this.go(1); ev.preventDefault(); }
+      else if(k==='ArrowLeft'||k==='k'){ this.go(-1); ev.preventDefault(); }
+      else if(k==='Escape'||k==='f'){ this.closeReview(); ev.preventDefault(); }
+      else if(!row){ /* nothing else without a row */ }
+      else if(k==='a'){ this.acceptAndNext(row); ev.preventDefault(); }
+      else if(k==='p'){ if(row.e[this.target]&&row.e[this.target].accepted) this.toggleAccept(row); ev.preventDefault(); }
+      else if(k==='e'){ this.$nextTick(()=>this.$refs.revEdit&&this.$refs.revEdit.focus()); ev.preventDefault(); }
+      else if(k==='s'){ this.suggest(row); ev.preventDefault(); }
+      else if(k==='u'){ this.restoreLast(); ev.preventDefault(); }
+      else if('123'.includes(k)){ const arr=this.sugs[this.skey(row.file,this.target,row.e.path)]||[];
+        const s=arr[Number(k)-1]; if(s) this.applySug(row,s); ev.preventDefault(); } },
+    async acceptAndNext(row){ const c=row.e[this.target];
+      if(c&&c.editable&&!this.isEmpty(c)&&!c.accepted) await this.toggleAccept(row);
+      this.go(1); },
+
+    // ---- misc ----
+    flash(msg){ this.notice=msg; setTimeout(()=>{ if(this.notice===msg) this.notice=''; },2800); },
+    backup(file,lang,path,prev,next){ const key='i18nstudio.backups';
+      const arr=JSON.parse(localStorage.getItem(key)||'[]'); arr.push({file,lang,path,prev,next,ts:Date.now()});
+      while(arr.length>200) arr.shift(); localStorage.setItem(key,JSON.stringify(arr)); this.backups=arr.length; },
+    async restoreLast(){ const key='i18nstudio.backups'; const arr=JSON.parse(localStorage.getItem(key)||'[]');
+      const last=arr.pop(); if(!last){ this.flash('Nothing to undo.'); return; }
       localStorage.setItem(key,JSON.stringify(arr)); this.backups=arr.length;
       for(const f of this.files) if(f.file===last.file) for(const e of f.entries) if(e.path===last.path && e[last.lang]){
-        e[last.lang].value=last.prev;
+        e[last.lang].value=last.prev; e[last.lang].accepted=false;
         const r=await fetch('/api/save',{method:'POST',headers:{'content-type':'application/json'},
           body:JSON.stringify({file:last.file,lang:last.lang,path:last.path,value:last.prev})}).then(r=>r.json()).catch(()=>({ok:false}));
-        this.flash(r.ok?('Undid '+last.path+' ('+last.lang+')'):'Undo failed.');
-        return;
-      }
-      this.flash('Could not find '+last.path+' to undo.');
-    },
+        this.flash(r.ok?('Undid '+last.path+' ('+last.lang+')'):'Undo failed.'); this.refresh(); return; }
+      this.flash('Could not find '+last.path+' to undo.'); },
   };
 }
 </script>

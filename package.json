@@ -1,6 +1,6 @@
 {
   "name": "i18n-studio",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Local web tool to edit any Astro-style i18n string files (export default { <lang>: {...} }) with AST-safe minimal-diff saves, hot-reload, and Claude translation suggestions.",
   "bin": {

@@ -1,11 +1,13 @@
 # i18n Studio
 
-A tiny local web tool to edit **Astro-style i18n string files** and get live
-translation suggestions from Claude. Each file is an
-`export default { en: {...}, ru: {...} }` object; editing a string writes the
-`.ts` file with a minimal one-line diff, so a running dev server hot-reloads.
+A local web workstation for **localizing Astro-style i18n string files** at scale.
+Each file is an `export default { en: {...}, ru: {...}, … }` object; editing a
+string writes the `.ts` file with a minimal one-line diff (via `ts-morph`), so a
+running dev server hot-reloads. Built for going through thousands of strings:
+filtering, a review/acceptance workflow, duplicate propagation, Claude
+translation suggestions, and a keyboard-driven fullscreen review mode.
 
-Works against **any** repo that follows that convention, not just one project.
+Works against **any** repo that follows the convention, not one project.
 
 ## Run
 
@@ -13,18 +15,42 @@ Works against **any** repo that follows that convention, not just one project.
 # from the target repo root (auto-detects ./src/i18n/strings):
 node ~/ai_projects/i18n-studio/server.mjs
 
-# or point it anywhere:
-node ~/ai_projects/i18n-studio/server.mjs --dir path/to/strings
+# or point it anywhere, with more languages and a tone brief:
+node ~/ai_projects/i18n-studio/server.mjs --dir path/to/strings --langs en,ru,de --voice "Warm, plain, no jargon."
 ```
 
-Then open the printed URL (default http://localhost:4331). Keep the target
-project's own dev server running in another terminal to see edits hot-reload.
+Open the printed URL (default http://localhost:4331). Keep the target project's
+own dev server running in another terminal to see edits hot-reload. First time
+only: `cd ~/ai_projects/i18n-studio && npm install`.
 
-First time only: `cd ~/ai_projects/i18n-studio && npm install`.
+## Features
 
-## Configuration
+- **Source → target language switch.** Pick any language as the read-only source
+  reference and any as the editable target; switch either from the header. Scales
+  past two languages without a wall of columns.
+- **Filters + sort.** Filter by free text (key or value), by status
+  (all / untranslated / pending / accepted / duplicates), and by file. Sort by
+  file order, path, status, or duplicates-first. Live counts of
+  accepted / pending / untranslated for the current target.
+- **Review acceptance.** Mark a translation accepted; it stays accepted only while
+  the value is unchanged (any edit drops it back to pending). Stored in a sidecar
+  `.i18n-status.json` next to the strings (see below).
+- **Duplicate propagation.** Identical values are detected across the whole corpus.
+  After editing one, a banner offers to apply the new value to every other entry
+  that still holds the old one.
+- **Fullscreen review mode.** Step through the filtered set one entry at a time,
+  fully keyboard driven, with the shortcut legend always visible:
+  `←/→` or `j/k` prev·next, `a` accept & next, `p` mark pending, `e` edit,
+  `s` suggest, `1/2/3` apply a suggestion, `u` undo, `Esc` close.
+- **Suggestions.** Claude proposes 3 translations from the source language,
+  preserving HTML tags/entities and tone.
+- **Auto-save + undo.** Edits debounce (500 ms) and write straight to the `.ts`
+  file; the last 200 edits are kept in `localStorage` with an undo control.
 
-Flags take priority over env vars; both are optional.
+Large corpora: the list renders up to 400 filtered rows (a notice shows the rest);
+narrow the filter or use review mode to go through everything.
+
+## Configuration (flags > env > default)
 
 | Flag | Env | Default | Meaning |
 |---|---|---|---|
@@ -33,48 +59,43 @@ Flags take priority over env vars; both are optional.
 | `--voice "..."` | `I18N_VOICE` | editorial default | One-line tone brief for suggestions |
 | `--port 4331` | `PORT` | `4331` | Server port |
 
-## What it does
+## Acceptance sidecar
 
-- **Shows every string** in all configured languages, grouped by file, with a
-  live filter (matches key or text).
-- **Editable vs computed.** Plain string literals (and static backtick
-  templates) are editable. Template literals with `${…}` are computed and shown
-  **read-only** — they can't be edited as static text.
-- **Suggest.** Each editable cell has a *suggest* button: Claude proposes 3
-  translations from another language, preserving HTML tags/entities and tone.
-- **Auto-save.** Edits debounce (500 ms) and write straight to the `.ts` file —
-  a minimal one-line diff, formatting preserved (via `ts-morph` AST edits).
-- **Backup.** Every save pushes the previous value into `localStorage`
-  (last 200 edits); *undo last edit* restores the most recent change.
+Review state lives in `<strings-dir>/.i18n-status.json`, mapping
+`file::lang::path` to the hash of the accepted value. It is separate from the
+`.ts` sources. Commit it to share review progress across a team, or gitignore it
+to keep acceptance local. The `.ts` filter ignores it, so it never appears as a
+string.
 
 ## HTTP API
 
-The server is scriptable, which is how agents drive it (see the `i18n-studio`
-skill):
+The server is scriptable (see the `i18n-studio` skill and `scripts/i18n.mjs`):
 
-- `GET  /api/strings` → `{ langs, files: [{ file, entries: [{ path, <lang>: { value, editable } }] }] }`
-- `POST /api/save`    → body `{ file, lang, path, value }`; AST-safe write, returns `{ ok, saved }`
-- `POST /api/suggest` → body `{ sourceText, from, to, path }`; returns `{ ok, suggestions: [...] }`
+- `GET  /api/strings` → `{ langs, files: [{ file, entries: [{ path, <lang>: { value, editable, accepted } }] }] }`
+- `POST /api/save`      → `{ file, lang, path, value }`; AST-safe write; drops acceptance for that cell
+- `POST /api/save-many` → `{ edits: [{ file, lang, path, value }] }`; batch write (duplicate propagation)
+- `POST /api/accept`    → `{ file, lang, path, value, accepted }`; toggle review acceptance
+- `POST /api/suggest`   → `{ sourceText, from, to, path }`; returns `{ ok, suggestions: [...] }`
 
 `path` is a dot-path with numeric array indices, e.g. `weeks.2.sessions.1.t`.
 
 ## How it works
 
-- `config.mjs` — resolves target dir, languages, voice, and port from flags/env.
-- `strings.mjs` — `ts-morph` reads/writes the `export default { … }` object
-  literals, walking to each leaf by dot-path. Writes replace only the target
-  string node, so unrelated formatting never churns.
-- `server.mjs` — [Hono](https://hono.dev) backend with the three routes above,
-  serving the single-page `index.html`.
+- `config.mjs` — resolves target dir, languages, voice, and port.
+- `strings.mjs` — `ts-morph` reads/writes the `export default { … }` literals by
+  dot-path; writes replace only the target string node, so formatting never churns.
+- `status.mjs` — the acceptance sidecar (value-hash based, auto-invalidating).
+- `server.mjs` — [Hono](https://hono.dev) backend + single-page `index.html`.
 - `index.html` — Alpine.js single page, no build step.
 - Suggestions use `@anthropic-ai/claude-agent-sdk`'s `query()`, authenticated via
-  your logged-in **Claude Code subscription** (no API key needed). A stale
-  `ANTHROPIC_API_KEY` in the env is dropped at startup so the SDK falls back to
-  session auth.
+  your logged-in **Claude Code subscription** (no API key). A stale
+  `ANTHROPIC_API_KEY` is dropped at startup so session auth is used.
 
 ## Notes / limits
 
-- The editor shows and edits **all** configured languages at once, independent of
-  which single `SITE_LANG` a target dev server was started with.
-- Read-only computed strings (`${d.en.…}` interpolation) must be edited by hand
+- Computed strings (`${…}` interpolation, numbers) are read-only; edit them by hand
   in the `.ts` source.
+- A target key that does not exist yet is shown read-only: add it once in the `.ts`
+  source, then it becomes editable here.
+- One save writes one leaf; bulk changes are multiple saves (propagation uses the
+  batch route).
