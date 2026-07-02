@@ -64,8 +64,14 @@ function collect(node, path, out) {
     node.getElements().forEach((el, i) => collect(el, `${path}.${i}`, out));
   } else if (EDITABLE.has(kind)) {
     out.set(path, { value: node.getLiteralValue(), editable: true });
+  } else if (kind === SyntaxKind.TemplateExpression) {
+    // Interpolated template `... ${expr} ...`: the prose is translatable, the
+    // ${...} placeholders must survive. Expose the raw template body (backticks
+    // stripped) as editable, flagged so the UI can warn about the placeholders.
+    const raw = node.getText();
+    out.set(path, { value: raw.slice(1, -1), editable: true, interp: true });
   } else {
-    // Template expression with ${}, number, etc. — show but don't edit.
+    // Number, identifier, etc. — show but don't edit.
     out.set(path, { value: node.getText(), editable: false });
   }
 }
@@ -115,11 +121,19 @@ export function write(file, lang, path, value) {
   const obj = langObject(sf, lang);
   if (!obj) throw new Error(`no ${lang} object in ${file}`);
   const node = nodeAtPath(obj, path);
-  if (!node || !EDITABLE.has(node.getKind())) {
+  const kind = node && node.getKind();
+  if (!node || (!EDITABLE.has(kind) && kind !== SyntaxKind.TemplateExpression)) {
     throw new Error(`path not editable: ${path}`);
   }
-  const delim = node.getText()[0]; // ' " or `
-  node.replaceWithText(encode(value, delim));
+  if (kind === SyntaxKind.TemplateExpression) {
+    // Re-wrap as a template literal, keeping ${...} live; escape only bare
+    // backticks (the value is already template-body source form).
+    const body = String(value).replace(/(?<!\\)`/g, '\\`');
+    node.replaceWithText('`' + body + '`');
+  } else {
+    const delim = node.getText()[0]; // ' " or `
+    node.replaceWithText(encode(value, delim));
+  }
   sf.saveSync();
   return { file, lang, path, value };
 }

@@ -38,6 +38,7 @@
   .b-empty{color:var(--err);border-color:color-mix(in srgb,var(--err) 40%,var(--border))}
   .b-dup{color:var(--lead);border-color:color-mix(in srgb,var(--lead) 45%,var(--border))}
   .b-code{color:var(--muted);border-style:dashed}
+  .b-interp{color:var(--radon);border-color:color-mix(in srgb,var(--radon) 45%,var(--border))}
   .b-ro{color:var(--muted)}
   .cell{display:flex;flex-direction:column;gap:5px}
   .lang{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
@@ -160,6 +161,7 @@
         <div class="badges">
           <span class="badge" :class="'b-'+st(row)" x-text="st(row)"></span>
           <template x-if="rowCode(row)"><span class="badge b-code">code</span></template>
+          <template x-if="row.e[target] && row.e[target].interp"><span class="badge b-interp" title="Keep the ${…} placeholders when translating">${…}</span></template>
           <template x-if="dupN(row)>1"><span class="badge b-dup" x-text="'×'+dupN(row)"></span></template>
         </div>
       </div>
@@ -248,6 +250,7 @@
           <div class="rev-path" x-text="cur().e.path"></div>
           <div class="badges" style="margin-top:8px">
             <span class="badge" :class="'b-'+st(cur())" x-text="st(cur())"></span>
+            <template x-if="cur().e[target] && cur().e[target].interp"><span class="badge b-interp">${…} keep placeholders</span></template>
             <template x-if="dupN(cur())>1"><span class="badge b-dup" x-text="'×'+dupN(cur())+' duplicates'"></span></template>
           </div>
         </div>

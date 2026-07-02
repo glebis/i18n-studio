@@ -100,9 +100,16 @@ The server is scriptable (see the `i18n-studio` skill and `scripts/i18n.mjs`):
   your logged-in **Claude Code subscription** (no API key). A stale
   `ANTHROPIC_API_KEY` is dropped at startup so session auth is used.
 
+## Interpolated strings
+
+Strings with `${…}` interpolation (e.g. `` `Small cohort of ${d.en.cohortSize}` ``)
+are **editable**: the prose around the placeholders is translatable and the tool
+re-wraps the value as a template literal on save, keeping every `${…}` live. Such
+rows carry a `${…}` badge as a reminder to keep the placeholders intact.
+
 ## Notes / limits
 
-- Computed strings (`${…}` interpolation, numbers) are read-only; edit them by hand
+- Non-string leaves (numbers, identifiers) remain read-only; edit them by hand
   in the `.ts` source.
 - A target key that does not exist yet is shown read-only: add it once in the `.ts`
   source, then it becomes editable here.
