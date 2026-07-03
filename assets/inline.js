@@ -116,8 +116,9 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
     }
 
     async function save() {
-      if (!editing) return;
-      const { el, entry, original, domBefore } = editing;
+      const session = editing;
+      if (!session) return;
+      const { el, entry, original, domBefore } = session;
       const value = serializeEdited(el.innerHTML);
       if (normalizeValue(value) === normalizeValue(original)) return; // no-op edit
       try {
@@ -128,9 +129,10 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
         const out = await r.json();
         if (!out.ok) throw new Error(out.error || `HTTP ${r.status}`);
         outline(el, '#3fb950'); setTimeout(() => el.isConnected && mode && !el.isContentEditable && outline(el, '#8b949e'), 800);
-        if (tagsChanged(domBefore, el.innerHTML)) toast('⚠ markup changed — double-check in the studio');
-        matched.get(el).original = value; editing.original = value;
-        offerDuplicates(entry, original, value);
+        const warn = tagsChanged(domBefore, el.innerHTML) ? '⚠ markup changed — double-check in the studio. ' : '';
+        if (matched.has(el)) matched.get(el).original = value;
+        if (editing === session) editing.original = value;
+        offerDuplicates(entry, original, value, warn);
       } catch (e) {
         outline(el, '#f85149');
         toast(`save failed: ${e.message}`);
@@ -139,18 +141,25 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
     }
 
     // Same old value elsewhere in the corpus → one-click propagation.
-    function offerDuplicates(saved, oldValue, newValue) {
+    function offerDuplicates(saved, oldValue, newValue, warn = '') {
       const others = (index.get(normalizeValue(oldValue)) || [])
         .filter((e) => !(e.file === saved.file && e.path === saved.path));
-      if (!others.length) return;
-      toast(`applied — same text in ${others.length} more place${others.length > 1 ? 's' : ''} <button>apply to all</button>`, 12000);
+      if (!others.length) { if (warn) toast(warn); return; }
+      toast(`${warn}applied — same text in ${others.length} more place${others.length > 1 ? 's' : ''} <button>apply to all</button>`, 12000);
       toastEl.querySelector('button').onclick = async () => {
-        await fetch('/__i18n/api/save-many', {
-          method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ edits: others.map((e) => ({ file: e.file, lang, path: e.path, value: newValue })) }),
-        });
-        others.forEach((e) => { e.value = newValue; });
-        toast(`applied to ${others.length} more`);
+        try {
+          const r = await fetch('/__i18n/api/save-many', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ edits: others.map((e) => ({ file: e.file, lang, path: e.path, value: newValue })) }),
+          });
+          const out = await r.json();
+          if (!r.ok || !out.ok) throw new Error(out && out.error || `HTTP ${r.status}`);
+          others.forEach((e) => { e.value = newValue; });
+          toast(`applied to ${others.length} more`);
+        } catch (e) {
+          toast(`apply to all failed: ${e.message}`);
+          console.warn('[i18n-studio]', e);
+        }
       };
     }
 
