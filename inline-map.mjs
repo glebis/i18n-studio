@@ -49,6 +49,23 @@ export function tagsChanged(before, after) {
   return tagMultiset(before) !== tagMultiset(after);
 }
 
+// Some sites wrap words in spans at runtime for scroll-reveal animations, e.g.
+// `<span class="w">Start</span> <span class="w">from</span> …`. Those never equal
+// the corpus string, so strip exact single-class wrapper spans for each class name
+// given, looping (per class) until no further change — this also unwraps nesting.
+export function unwrapSpans(html, classes = ['w']) {
+  let out = String(html);
+  for (const cls of classes) {
+    const re = new RegExp(`<span class="${cls}">([\\s\\S]*?)<\\/span>`, 'g');
+    let prev;
+    do {
+      prev = out;
+      out = out.replace(re, '$1');
+    } while (out !== prev);
+  }
+  return out;
+}
+
 // /api/strings `files` payload → Map of normalized value → candidate entries.
 export function buildIndex(files, lang) {
   const idx = new Map();

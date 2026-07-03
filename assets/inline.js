@@ -1,7 +1,7 @@
 // assets/inline.js — i18n Studio inline on-page editor.
 // Injected by proxy.mjs into every HTML page of the proxied dev server.
 // All logic with tests lives in inline-map.mjs; this file is DOM glue only.
-import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18n/inline-map.mjs';
+import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans } from '/__i18n/inline-map.mjs';
 
 (async function boot() {
   try {
@@ -70,7 +70,7 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
             : NodeFilter.FILTER_ACCEPT,
       });
       for (let el = walker.nextNode(); el; el = walker.nextNode()) {
-        const entries = index.get(normalizeValue(cleanHtml(el)));
+        const entries = index.get(normalizeValue(unwrapSpans(cleanHtml(el))));
         if (entries) {
           // Nested matches (parent wrapping a matching child) are both tagged;
           // the click handler resolves via composedPath(), which is ordered
@@ -93,7 +93,18 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
       keyhint.style.display = 'block';
     }
 
-    function setMode(on) {
+    // `fromBoot` distinguishes the two callers of setMode(true):
+    //  - manual (fromBoot=false, the default): the user clicked the badge.
+    //    On first toggle-on, animations may still be live (pre.js only disables
+    //    them on a fresh navigation), so we reload once to get a clean pass.
+    //  - boot restore (fromBoot=true): sessionStorage already says mode=on
+    //    after that reload, and pre.js has ALREADY run (setting
+    //    window.__i18nPreActive = true) before this script executes — so the
+    //    `!window.__i18nPreActive` guard below is false and no further reload
+    //    is triggered. This makes the reload-once loop self-terminating: the
+    //    only path that can schedule a reload is the manual path, and by the
+    //    time boot restore re-enters edit mode post-reload, the guard is shut.
+    function setMode(on, { fromBoot = false } = {}) {
       mode = on;
       badge.classList.toggle('on', on);
       if (on) {
@@ -113,6 +124,10 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
       }
       ssSet('mode', on ? '1' : '');
       badge.textContent = `i18n edit: ${on ? 'on' : 'off'} · ${matchedEls.length} matched`;
+      if (on && !fromBoot && !window.__i18nPreActive) {
+        toast('animations on — reloading to enable full matching…');
+        setTimeout(() => location.reload(), 600);
+      }
     }
 
     badge.addEventListener('click', () => {
@@ -157,7 +172,7 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
     function startEdit(el) {
       if (el.isContentEditable) return;
       const m = matched.get(el);
-      editing = { el, entry: m.entries[0], original: m.original, domBefore: cleanHtml(el) };
+      editing = { el, entry: m.entries[0], original: m.original, domBefore: unwrapSpans(cleanHtml(el)) };
       el.contentEditable = 'true'; el.focus(); outline(el, '#d29922');
       el.addEventListener('input', onInput);
       el.addEventListener('blur', onBlur);
@@ -184,7 +199,7 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
       const session = editing;
       if (!session) return;
       const { el, entry, original, domBefore } = session;
-      const cleanedInnerHtml = cleanHtml(el);
+      const cleanedInnerHtml = unwrapSpans(cleanHtml(el));
       const value = serializeEdited(cleanedInnerHtml);
       if (normalizeValue(value) === normalizeValue(original)) return; // no-op edit
       try {
@@ -240,7 +255,7 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
     scan();
 
     // ---- restore state across HMR full-page reloads ----
-    if (ssGet('mode')) setMode(true);
+    if (ssGet('mode')) setMode(true, { fromBoot: true });
     const pendingRaw = ssGet('pending-dup');
     if (pendingRaw) {
       ssRemove('pending-dup');

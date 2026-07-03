@@ -8,11 +8,23 @@ import { dirname, join } from 'node:path';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT_TAG = '<script type="module" src="/__i18n/inline.js"></script>';
+const PRE_SCRIPT_TAG = '<script src="/__i18n/pre.js"></script>';
 
 export function injectInlineScript(html) {
   if (html.includes('/__i18n/inline.js')) return html;
   const i = html.toLowerCase().lastIndexOf('</body>');
   return i === -1 ? html + SCRIPT_TAG : html.slice(0, i) + SCRIPT_TAG + html.slice(i);
+}
+
+// Inserted immediately after the opening <head> tag so it runs before any site
+// scripts (disables animations / signals prefers-reduced-motion while editing).
+// Falls back to prepending at the very start of the doc when there's no <head>.
+export function injectPreScript(html) {
+  if (html.includes('/__i18n/pre.js')) return html;
+  const m = html.match(/<head[^>]*>/i);
+  if (!m) return PRE_SCRIPT_TAG + html;
+  const i = m.index + m[0].length;
+  return html.slice(0, i) + PRE_SCRIPT_TAG + html.slice(i);
 }
 
 // Hop-by-hop / re-computed headers we must not forward from the upstream response
@@ -23,7 +35,11 @@ export function createProxyApp({ target, studioFetch, fetchFn = fetch }) {
   const app = new Hono();
   const origin = new URL(target).origin;
 
-  const JS = { 'inline.js': join(HERE, 'assets', 'inline.js'), 'inline-map.mjs': join(HERE, 'inline-map.mjs') };
+  const JS = {
+    'inline.js': join(HERE, 'assets', 'inline.js'),
+    'inline-map.mjs': join(HERE, 'inline-map.mjs'),
+    'pre.js': join(HERE, 'assets', 'pre.js'),
+  };
   app.get('/__i18n/:name', (c) => {
     const file = JS[c.req.param('name')];
     if (!file) return c.text('not found', 404);
@@ -54,7 +70,8 @@ export function createProxyApp({ target, studioFetch, fetchFn = fetch }) {
     const headers = new Headers();
     upstream.headers.forEach((v, k) => { if (!DROP.has(k.toLowerCase())) headers.set(k, v); });
     if ((upstream.headers.get('content-type') || '').includes('text/html')) {
-      return new Response(injectInlineScript(await upstream.text()), { status: upstream.status, headers });
+      const withPre = injectPreScript(await upstream.text());
+      return new Response(injectInlineScript(withPre), { status: upstream.status, headers });
     }
     return new Response(upstream.body, { status: upstream.status, headers });
   });

@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Hono } from 'hono';
-import { injectInlineScript, createProxyApp } from '../proxy.mjs';
+import { injectInlineScript, injectPreScript, createProxyApp } from '../proxy.mjs';
 
 const TAG = '<script type="module" src="/__i18n/inline.js"></script>';
+const PRE_TAG = '<script src="/__i18n/pre.js"></script>';
 
 test('injectInlineScript: before </body>, case-insensitive, idempotent, fallback append', () => {
   assert.equal(injectInlineScript('<body>x</body>'), `<body>x${TAG}</body>`);
@@ -11,6 +12,14 @@ test('injectInlineScript: before </body>, case-insensitive, idempotent, fallback
   assert.equal(injectInlineScript('no body tag'), `no body tag${TAG}`);
   const once = injectInlineScript('<body>x</body>');
   assert.equal(injectInlineScript(once), once); // idempotent
+});
+
+test('injectPreScript: right after opening <head>, case-insensitive, idempotent, no-head fallback', () => {
+  assert.equal(injectPreScript('<head><title>x</title></head><body>y</body>'), `<head>${PRE_TAG}<title>x</title></head><body>y</body>`);
+  assert.equal(injectPreScript('<HEAD lang="en"><title>x</title></HEAD>'), `<HEAD lang="en">${PRE_TAG}<title>x</title></HEAD>`);
+  assert.equal(injectPreScript('no head tag'), `${PRE_TAG}no head tag`);
+  const once = injectPreScript('<head></head>');
+  assert.equal(injectPreScript(once), once); // idempotent
 });
 
 function fakeUpstream(routes) {
@@ -34,12 +43,30 @@ function makeProxy(routes) {
 }
 
 test('HTML responses get the script injected exactly once', async () => {
-  const app = makeProxy({ '/': { body: '<html><body>hi</body></html>', headers: { 'content-type': 'text/html; charset=utf-8' } } });
+  const app = makeProxy({ '/': { body: '<html><head></head><body>hi</body></html>', headers: { 'content-type': 'text/html; charset=utf-8' } } });
   const res = await app.request('/');
   const text = await res.text();
   assert.equal(res.status, 200);
   assert.equal(text.split('/__i18n/inline.js').length - 1, 1);
+  assert.equal(text.split('/__i18n/pre.js').length - 1, 1);
   assert.match(text, /hi<script type="module"/);
+  assert.match(text, /<head><script src="\/__i18n\/pre\.js">/);
+});
+
+test('HTML with no <head> tag falls back to prepending pre.js at the very start', async () => {
+  const app = makeProxy({ '/': { body: '<html><body>hi</body></html>', headers: { 'content-type': 'text/html; charset=utf-8' } } });
+  const res = await app.request('/');
+  const text = await res.text();
+  assert.equal(res.status, 200);
+  assert.equal(text.split('/__i18n/pre.js').length - 1, 1);
+  assert.match(text, /^<script src="\/__i18n\/pre\.js"><\/script><html>/);
+});
+
+test('pre.js injection is idempotent even if processed twice', () => {
+  const once = injectPreScript('<head></head><body>x</body>');
+  const twice = injectPreScript(once);
+  assert.equal(twice, once);
+  assert.equal(twice.split('/__i18n/pre.js').length - 1, 1);
 });
 
 test('non-HTML passes through byte-identical', async () => {
@@ -56,7 +83,7 @@ test('/__i18n/api/* is answered by the studio app, not the upstream', async () =
 
 test('/__i18n/inline.js and /__i18n/inline-map.mjs serve JS', async () => {
   const app = makeProxy({});
-  for (const p of ['/__i18n/inline.js', '/__i18n/inline-map.mjs']) {
+  for (const p of ['/__i18n/inline.js', '/__i18n/inline-map.mjs', '/__i18n/pre.js']) {
     const res = await app.request(p);
     assert.equal(res.status, 200, p);
     assert.match(res.headers.get('content-type'), /javascript/);

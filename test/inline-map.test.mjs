@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { decodeEntities, normalizeValue } from '../inline-map.mjs';
+import { decodeEntities, normalizeValue, unwrapSpans } from '../inline-map.mjs';
 
 test('decodeEntities: named, numeric decimal and hex refs', () => {
   assert.equal(decodeEntities('a&nbsp;b'), 'a b');
@@ -72,4 +72,19 @@ test('buildIndex: only editable non-interp cells of the language, grouped by nor
   assert.equal(idx.get(normalizeValue('x ${y}')), undefined);
   const ruIdx = buildIndex(files, 'ru');
   assert.equal(ruIdx.get(normalizeValue('21 июля')).length, 1);
+});
+
+test('unwrapSpans: strips single-class wrapper spans, keeps everything else', () => {
+  assert.equal(unwrapSpans('<span class="w">Impact</span> <span class="w">first</span>'), 'Impact first');
+  assert.equal(unwrapSpans('a <span class="w">b <span class="w">c</span></span> d'), 'a b c d');
+  assert.equal(unwrapSpans('<span class="nb">keep</span>'), '<span class="nb">keep</span>');
+  assert.equal(unwrapSpans('<span class="w extra">keep</span>'), '<span class="w extra">keep</span>');
+  assert.equal(unwrapSpans('<span class="x">y</span>', ['x']), 'y');
+  assert.equal(unwrapSpans('plain'), 'plain');
+});
+
+test('unwrapSpans: makes scroll-reveal word-wrapped DOM match the source string', () => {
+  const source = 'Start from the change you want in&nbsp;the world';
+  const dom = '<span class="w">Start</span> <span class="w">from</span> <span class="w">the</span> <span class="w">change</span> <span class="w">you</span> <span class="w">want</span> <span class="w">in the</span> <span class="w">world</span>';
+  assert.equal(normalizeValue(unwrapSpans(dom)), normalizeValue(source));
 });

@@ -62,6 +62,16 @@ only: `cd ~/ai_projects/i18n-studio && npm install`.
   duplicates offered via a toast). HTML strings are edited rich; a warning appears
   if the markup structure changed. Zero changes to the target repo.
 
+  Matching is resilient to scroll-reveal animations that wrap words in spans at
+  runtime (e.g. `<span class="w">Start</span> <span class="w">from</span> …`):
+  those wrapper spans are stripped before comparing against the corpus, and saves
+  write back the clean unwrapped text. In addition, while edit mode is on, the
+  proxy signals `prefers-reduced-motion` to the page and freezes CSS animations
+  and transitions, so reveal/animation scripts don't rewrite the DOM out from
+  under the scanner mid-match. The very first toggle-on reloads the page once so
+  this signal is in place before the site's own scripts run; subsequent toggles
+  don't reload.
+
 Large corpora: the list renders up to 150 filtered rows (a notice shows the rest);
 narrow the filter or use review mode to go through everything.
 
