@@ -18,6 +18,9 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
     // Tracks the payload of a save() request currently in flight, so the
     // beforeunload handler can still beacon it if the tab closes before the
     // fetch settles (see save() and the beforeunload listener below).
+    // Deliberately a single slot, not a queue: on overlapping saves only the
+    // newest payload is kept for the unload beacon — the older fetch is
+    // already in flight and normally completes on its own.
     let inflightPayload = null;
     const decorated = new Set(); // every element we've ever applied our outline to
 
@@ -132,6 +135,9 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
           const freezeStyle = document.getElementById('i18n-studio-freeze');
           if (freezeStyle) freezeStyle.remove();
           if (window.__i18nOrigMatchMedia) window.matchMedia = window.__i18nOrigMatchMedia;
+          // Clear the patched flag so a subsequent __i18nApplyFreeze() call
+          // (re-toggle-on) re-wraps matchMedia instead of no-op'ing.
+          window.__i18nMatchMediaPatched = false;
         } catch {}
       }
       ssSet('mode', on ? '1' : '');
@@ -139,6 +145,14 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
       if (on && !fromBoot && !window.__i18nPreActive) {
         toast('animations on — reloading to enable full matching…');
         setTimeout(() => location.reload(), 600);
+      }
+      // Re-toggle-on within the same page life: pre.js's reload guard
+      // (__i18nPreActive) only fires once, so a prior toggle-off (which
+      // removes the freeze style and restores matchMedia) would otherwise
+      // leave this second toggle-on unprotected. Re-apply the freeze
+      // directly if it's missing and the helper pre.js exposed is available.
+      if (on && !document.getElementById('i18n-studio-freeze') && typeof window.__i18nApplyFreeze === 'function') {
+        try { window.__i18nApplyFreeze(); } catch {}
       }
     }
 
