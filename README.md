@@ -55,6 +55,12 @@ only: `cd ~/ai_projects/i18n-studio && npm install`.
   preserving HTML tags/entities and tone.
 - **Auto-save + undo.** Edits debounce (500 ms) and write straight to the `.ts`
   file; the last 200 edits are kept in `localStorage` with an undo control.
+- **Inline on-page editing (proxy mode).** Run with `--proxy http://localhost:4321`
+  (your dev server) and open `http://localhost:4332`: the studio proxies the site
+  and injects an editor. Toggle the corner badge, click any matched text, edit in
+  place — saves are debounced through the same AST-safe pipeline (acceptance drops,
+  duplicates offered via a toast). HTML strings are edited rich; a warning appears
+  if the markup structure changed. Zero changes to the target repo.
 
 Large corpora: the list renders up to 150 filtered rows (a notice shows the rest);
 narrow the filter or use review mode to go through everything.
