@@ -16,6 +16,19 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
     let editing = null;            // { el, entry, original }
     let saveTimer = 0;
     let mode = false;
+    const decorated = new Set(); // every element we've ever applied our outline to
+
+    // ---- sessionStorage persistence (survives HMR full-page reloads) ----
+    const SS_PREFIX = 'i18n-studio:';
+    function ssGet(key) {
+      try { return sessionStorage.getItem(SS_PREFIX + key); } catch { return null; }
+    }
+    function ssSet(key, value) {
+      try { sessionStorage.setItem(SS_PREFIX + key, value); } catch {}
+    }
+    function ssRemove(key) {
+      try { sessionStorage.removeItem(SS_PREFIX + key); } catch {}
+    }
 
     // ---- badge UI (shadow DOM so host styles can't leak in either direction) ----
     const host = document.createElement('div');
@@ -57,7 +70,7 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
             : NodeFilter.FILTER_ACCEPT,
       });
       for (let el = walker.nextNode(); el; el = walker.nextNode()) {
-        const entries = index.get(normalizeValue(el.innerHTML));
+        const entries = index.get(normalizeValue(cleanHtml(el)));
         if (entries) {
           // Nested matches (parent wrapping a matching child) are both tagged;
           // the click handler resolves via composedPath(), which is ordered
@@ -70,7 +83,7 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
     }
 
     // ---- edit mode ----
-    function outline(el, color) { el.style.outline = `1px dashed ${color}`; el.style.outlineOffset = '2px'; }
+    function outline(el, color) { el.style.outline = `1px dashed ${color}`; el.style.outlineOffset = '2px'; decorated.add(el); }
     function clearOutline(el) { el.style.outline = ''; el.style.outlineOffset = ''; }
 
     function onMatchedHover(ev) {
@@ -83,16 +96,29 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
     function setMode(on) {
       mode = on;
       badge.classList.toggle('on', on);
-      for (const el of matchedEls) {
-        if (on) { outline(el, '#8b949e'); }
-        else { clearOutline(el); if (el.isContentEditable) stopEdit(el, false); }
+      if (on) {
+        for (const el of matchedEls) outline(el, '#8b949e');
+        document.addEventListener('mouseover', onMatchedHover);
+      } else {
+        // Clean up every element we've ever decorated, not just current
+        // matchedEls — a stale outline can survive on an element whose
+        // match broke since it was decorated (e.g. re-scan mid-session).
+        for (const el of decorated) {
+          clearOutline(el);
+          if (el.isContentEditable) stopEdit(el, false);
+        }
+        decorated.clear();
+        document.removeEventListener('mouseover', onMatchedHover);
+        keyhint.style.display = 'none';
       }
-      if (on) document.addEventListener('mouseover', onMatchedHover);
-      else { document.removeEventListener('mouseover', onMatchedHover); keyhint.style.display = 'none'; }
+      ssSet('mode', on ? '1' : '');
       badge.textContent = `i18n edit: ${on ? 'on' : 'off'} · ${matchedEls.length} matched`;
     }
 
-    badge.addEventListener('click', () => { scan(); setMode(!mode); });
+    badge.addEventListener('click', () => {
+      if (mode) { setMode(false); }
+      else { scan(); setMode(true); }
+    });
 
     document.addEventListener('click', (ev) => {
       if (!mode) return;
@@ -108,6 +134,12 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
     // ever read innerHTML for serialization or comparison. Legitimate authored
     // title attributes don't match this pattern and survive untouched.
     const INJECTED_TITLE_RE = /\.ts → /;
+    function stripInjectedOutline(node) {
+      if (!node.hasAttribute || !node.hasAttribute('style')) return;
+      node.style.removeProperty('outline');
+      node.style.removeProperty('outline-offset');
+      if (node.getAttribute('style') === '') node.removeAttribute('style');
+    }
     function cleanHtml(el) {
       const clone = el.cloneNode(true);
       clone.querySelectorAll('[title]').forEach((n) => {
@@ -116,6 +148,9 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
       if (clone.hasAttribute && clone.hasAttribute('title') && INJECTED_TITLE_RE.test(clone.getAttribute('title') || '')) {
         clone.removeAttribute('title');
       }
+      // Strip our own injected outline styles from descendants so a nested
+      // matched child's decoration doesn't break the parent's innerHTML match.
+      clone.querySelectorAll('[style]').forEach(stripInjectedOutline);
       return clone.innerHTML;
     }
 
@@ -172,10 +207,9 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
     }
 
     // Same old value elsewhere in the corpus → one-click propagation.
-    function offerDuplicates(saved, oldValue, newValue, warn = '') {
-      const others = (index.get(normalizeValue(oldValue)) || [])
-        .filter((e) => !(e.file === saved.file && e.path === saved.path));
-      if (!others.length) { if (warn) toast(warn); return; }
+    // The offer+toast is also persisted to sessionStorage so it survives the
+    // full-page reload HMR triggers ~100-500ms after a successful save.
+    function showDuplicatesToast(others, newValue, warn) {
       toast(`${warn}applied — same text in ${others.length} more place${others.length > 1 ? 's' : ''} <button>apply to all</button>`, 12000);
       toastEl.querySelector('button').onclick = async () => {
         try {
@@ -186,6 +220,7 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
           const out = await r.json();
           if (!r.ok || !out.ok) throw new Error(out && out.error || `HTTP ${r.status}`);
           others.forEach((e) => { e.value = newValue; });
+          ssRemove('pending-dup');
           toast(`applied to ${others.length} more`);
         } catch (e) {
           toast(`apply to all failed: ${e.message}`);
@@ -194,7 +229,30 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
       };
     }
 
+    function offerDuplicates(saved, oldValue, newValue, warn = '') {
+      const others = (index.get(normalizeValue(oldValue)) || [])
+        .filter((e) => !(e.file === saved.file && e.path === saved.path));
+      if (!others.length) { if (warn) toast(warn); return; }
+      ssSet('pending-dup', JSON.stringify({ others, newValue, warn, ts: Date.now() }));
+      showDuplicatesToast(others, newValue, warn);
+    }
+
     scan();
+
+    // ---- restore state across HMR full-page reloads ----
+    if (ssGet('mode')) setMode(true);
+    const pendingRaw = ssGet('pending-dup');
+    if (pendingRaw) {
+      ssRemove('pending-dup');
+      try {
+        const pending = JSON.parse(pendingRaw);
+        if (pending && Date.now() - pending.ts < 30000) {
+          showDuplicatesToast(pending.others, pending.newValue, pending.warn || '');
+        }
+      } catch (e) {
+        console.warn('[i18n-studio] failed to restore pending duplicates offer:', e);
+      }
+    }
   } catch (e) {
     console.warn('[i18n-studio] overlay failed to boot:', e);
   }
