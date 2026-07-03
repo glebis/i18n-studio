@@ -1,0 +1,46 @@
+# Manual verification — inline on-page editing (plan Task 5 Step 2)
+Date: 2026-07-03 · verifier: controller session (Claude) via claude-in-chrome
+Stack: ai-design Astro dev on :4321 · studio `--port 4341 --proxy http://localhost:4321` → proxy on :4342
+Automated suite at verification time: npm test 14/14 pass (worktree, branch feat/inline-editing-wt)
+
+Checklist results (all PASS after fix rounds 1–3):
+
+1. Match count + key tooltips
+   Badge showed "i18n edit: off · 435 matched" on boot; hover readout (shadow-DOM keyhint,
+   replaces title attrs after fix round 2) shows "file.ts → key.path".
+
+2. Plain-string edit
+   'Two sessions a week' → 'Two live sessions a week' (Format.ts rows.0.v): click-to-edit
+   worked, outline pulsed green, value on disk within ~1 s, git diff = exactly one line.
+   Astro hot-reloaded the un-proxied page. Reverted the same way.
+
+3. HTML-bearing string
+   Faq.ts items.2.a (contains <b> + &nbsp;): entities intact after save (&nbsp; re-encoded,
+   not raw NBSP), no style/title junk in the diff.
+   NOTE: first attempt (pre-fix-round-2) leaked an injected title attribute from a nested
+   matched child into the saved string — fixed by removing attribute-based tooltips +
+   cleanHtml stripping; retest clean (titleLeaked: false).
+
+4. Tag deletion warning
+   Unwrapped a <b> while editing → "⚠ markup changed — double-check in the studio" toast
+   shown; save still landed.
+
+5. Duplicates propagation
+   'Claude Code' (5 duplicate entries in Proof.ts): edit one → toast "applied — same text
+   in 4 more places [apply to all]"; clicking the button applied all 4 via save-many
+   ("applied to 4 more"). Toast + edit mode survive the Astro full-page HMR reload via
+   sessionStorage restore (fix round 3); toast auto-hides after its 12 s timeout (verified
+   by polling — earlier "instant hide" observation was tool-call latency, not a bug).
+   All test edits reverted afterwards via /api/save-many; git diff clean of test values.
+
+6. Toggle off
+   Edit mode off: 0 contenteditable elements, outlines cleared via the `decorated` set
+   (pre-fix: 7 stale outlines remained because nested outlines broke parent re-matching;
+   fixed in round 3 — scan matches through cleanHtml-stripped injected outlines).
+
+7. Upstream down
+   Killed the Astro dev server → GET :4342 returned 502 page naming
+   http://localhost:4321 and the --proxy flag. Restarted dev server: proxy 200 again.
+
+HMR WebSocket pass-through: confirmed working — every on-disk save triggered the proxied
+page's full reload through the ws upgrade path (Task 4 wiring).
