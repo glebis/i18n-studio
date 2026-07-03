@@ -30,12 +30,17 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
           background:#0c1116;color:#e6edf3;border:1px solid #30363d;border-radius:8px;padding:10px 14px;
           max-width:340px;display:none}
         .toast button{margin-left:8px;font:inherit;cursor:pointer}
+        .keyhint{position:fixed;left:16px;bottom:16px;z-index:2147483647;font:12px/1.4 ui-monospace,monospace;
+          background:#0c1116;color:#e6edf3;border:1px solid #30363d;border-radius:8px;padding:8px 12px;
+          box-shadow:0 4px 16px rgba(0,0,0,.4);pointer-events:none;display:none;max-width:340px;white-space:pre-wrap}
       </style>
+      <div class="keyhint" part="keyhint"></div>
       <div class="badge" part="badge">i18n edit: off</div>
       <div class="toast"></div>`;
     document.documentElement.appendChild(host);
     const badge = sh.querySelector('.badge');
     const toastEl = sh.querySelector('.toast');
+    const keyhint = sh.querySelector('.keyhint');
     function toast(html, ms = 6000) {
       toastEl.innerHTML = html; toastEl.style.display = 'block';
       clearTimeout(toastEl._t); toastEl._t = setTimeout(() => (toastEl.style.display = 'none'), ms);
@@ -68,13 +73,22 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
     function outline(el, color) { el.style.outline = `1px dashed ${color}`; el.style.outlineOffset = '2px'; }
     function clearOutline(el) { el.style.outline = ''; el.style.outlineOffset = ''; }
 
+    function onMatchedHover(ev) {
+      const el = ev.composedPath().find((n) => n instanceof Element && matched.has(n));
+      if (!el) { keyhint.style.display = 'none'; return; }
+      keyhint.textContent = matched.get(el).entries.map((e) => `${e.file} → ${e.path}`).join(' · ');
+      keyhint.style.display = 'block';
+    }
+
     function setMode(on) {
       mode = on;
       badge.classList.toggle('on', on);
       for (const el of matchedEls) {
-        if (on) { outline(el, '#8b949e'); el.title = matched.get(el).entries.map((e) => `${e.file} → ${e.path}`).join('\n'); }
-        else { clearOutline(el); el.removeAttribute('title'); if (el.isContentEditable) stopEdit(el, false); }
+        if (on) { outline(el, '#8b949e'); }
+        else { clearOutline(el); if (el.isContentEditable) stopEdit(el, false); }
       }
+      if (on) document.addEventListener('mouseover', onMatchedHover);
+      else { document.removeEventListener('mouseover', onMatchedHover); keyhint.style.display = 'none'; }
       badge.textContent = `i18n edit: ${on ? 'on' : 'off'} · ${matchedEls.length} matched`;
     }
 
@@ -89,10 +103,26 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
       startEdit(el);
     }, true);
 
+    // Belt-and-braces: strip any leftover injected `title="...ts → ..."` attributes
+    // (e.g. from a page reloaded mid-session, or a future regression) before we
+    // ever read innerHTML for serialization or comparison. Legitimate authored
+    // title attributes don't match this pattern and survive untouched.
+    const INJECTED_TITLE_RE = /\.ts → /;
+    function cleanHtml(el) {
+      const clone = el.cloneNode(true);
+      clone.querySelectorAll('[title]').forEach((n) => {
+        if (INJECTED_TITLE_RE.test(n.getAttribute('title') || '')) n.removeAttribute('title');
+      });
+      if (clone.hasAttribute && clone.hasAttribute('title') && INJECTED_TITLE_RE.test(clone.getAttribute('title') || '')) {
+        clone.removeAttribute('title');
+      }
+      return clone.innerHTML;
+    }
+
     function startEdit(el) {
       if (el.isContentEditable) return;
       const m = matched.get(el);
-      editing = { el, entry: m.entries[0], original: m.original, domBefore: el.innerHTML };
+      editing = { el, entry: m.entries[0], original: m.original, domBefore: cleanHtml(el) };
       el.contentEditable = 'true'; el.focus(); outline(el, '#d29922');
       el.addEventListener('input', onInput);
       el.addEventListener('blur', onBlur);
@@ -119,7 +149,8 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
       const session = editing;
       if (!session) return;
       const { el, entry, original, domBefore } = session;
-      const value = serializeEdited(el.innerHTML);
+      const cleanedInnerHtml = cleanHtml(el);
+      const value = serializeEdited(cleanedInnerHtml);
       if (normalizeValue(value) === normalizeValue(original)) return; // no-op edit
       try {
         const r = await fetch('/__i18n/api/save', {
@@ -129,7 +160,7 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex } from '/__i18
         const out = await r.json();
         if (!out.ok) throw new Error(out.error || `HTTP ${r.status}`);
         outline(el, '#3fb950'); setTimeout(() => el.isConnected && mode && !el.isContentEditable && outline(el, '#8b949e'), 800);
-        const warn = tagsChanged(domBefore, el.innerHTML) ? '⚠ markup changed — double-check in the studio. ' : '';
+        const warn = tagsChanged(domBefore, cleanedInnerHtml) ? '⚠ markup changed — double-check in the studio. ' : '';
         if (matched.has(el)) matched.get(el).original = value;
         if (editing === session) editing.original = value;
         offerDuplicates(entry, original, value, warn);
