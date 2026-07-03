@@ -18,7 +18,9 @@ import { dirname, join } from 'node:path';
 const HERE = dirname(fileURLToPath(import.meta.url));
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { readAll, write, LANGS, STRINGS_DIR } from './strings.mjs';
-import { langName, VOICE, PORT } from './config.mjs';
+import { langName, VOICE, PORT, PROXY_TARGET, PROXY_PORT } from './config.mjs';
+import { createProxyApp } from './proxy.mjs';
+import { request as httpRequest } from 'node:http';
 import { readStatus, isAccepted, setAccepted, clearAccepted } from './status.mjs';
 
 // Build the Hono app. `queryFn` (the Claude Agent SDK call) is injected so tests
@@ -128,8 +130,30 @@ export function parseList(text) {
 // Start listening only when run directly (`node server.mjs`), not when imported
 // by tests — importing must have no side effects and must not bind a port.
 if (process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url)) {
-  serve({ fetch: createApp().fetch, port: PORT }, (info) => {
+  const app = createApp();
+  serve({ fetch: app.fetch, port: PORT }, (info) => {
     console.log(`i18n Studio → http://localhost:${info.port}`);
     console.log(`editing:     ${STRINGS_DIR}  (${LANGS.join(', ')})`);
   });
+  if (PROXY_TARGET) {
+    const proxyApp = createProxyApp({ target: PROXY_TARGET, studioFetch: app.fetch });
+    const proxyServer = serve({ fetch: proxyApp.fetch, port: PROXY_PORT }, (info) => {
+      console.log(`inline edit → http://localhost:${info.port}  (proxying ${PROXY_TARGET})`);
+    });
+    // Pass WebSocket upgrades (Vite/Astro HMR) straight through to the target.
+    const t = new URL(PROXY_TARGET);
+    proxyServer.on('upgrade', (req, socket, head) => {
+      const up = httpRequest({ host: t.hostname, port: t.port || 80, path: req.url, headers: req.headers, method: 'GET' });
+      up.on('upgrade', (upRes, upSocket, upHead) => {
+        const lines = [`HTTP/1.1 101 Switching Protocols`];
+        for (const [k, v] of Object.entries(upRes.headers)) lines.push(`${k}: ${v}`);
+        socket.write(lines.join('\r\n') + '\r\n\r\n');
+        if (upHead?.length) socket.write(upHead);
+        if (head?.length) upSocket.write(head);
+        upSocket.pipe(socket); socket.pipe(upSocket);
+      });
+      up.on('error', () => socket.destroy());
+      up.end();
+    });
+  }
 }

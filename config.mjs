@@ -42,3 +42,8 @@ export const VOICE =
   'Concise, confident, a little editorial. Never generic marketing fluff.';
 
 export const PORT = Number(flag('port') || process.env.PORT || 4331);
+
+// Inline on-page editing: proxy the target dev server with the overlay injected.
+//   --proxy http://localhost:4321   (I18N_PROXY_TARGET)
+export const PROXY_TARGET = flag('proxy') || process.env.I18N_PROXY_TARGET || undefined;
+export const PROXY_PORT = PORT + 1;
