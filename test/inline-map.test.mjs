@@ -24,3 +24,52 @@ test('normalizeValue: entity/NBSP-insensitive, whitespace-collapsed', () => {
   // Different text must NOT collide.
   assert.notEqual(normalizeValue('July 21'), normalizeValue('July 22'));
 });
+
+import { serializeEdited, tagsChanged, buildIndex } from '../inline-map.mjs';
+
+test('serializeEdited: NBSP re-encoded, artifacts stripped, tags kept', () => {
+  assert.equal(serializeEdited('July 21'), 'July&nbsp;21');
+  assert.equal(serializeEdited('plain text'), 'plain text');
+  assert.equal(serializeEdited('<b>bold</b> stays'), '<b>bold</b> stays');
+  // Browser editing artifacts: trailing <br>, empty inline tags, injected style attrs.
+  assert.equal(serializeEdited('text<br>'), 'text');
+  assert.equal(serializeEdited('a <b></b>b'), 'a b');
+  assert.equal(serializeEdited('<span style="color: red;" class="nb">x</span>'), '<span class="nb">x</span>');
+  assert.equal(serializeEdited('  padded  '), 'padded');
+});
+
+test('serializeEdited: round-trip is normalize-stable', () => {
+  const src = 'for <b>5&nbsp;weeks</b> from <b>July&nbsp;21</b>.';
+  // What a browser renders back for this string (entities become characters):
+  const dom = 'for <b>5 weeks</b> from <b>July 21</b>.';
+  assert.equal(normalizeValue(serializeEdited(dom)), normalizeValue(src));
+});
+
+test('tagsChanged: multiset compare of tag names', () => {
+  assert.equal(tagsChanged('<b>a</b> <i>b</i>', '<i>x</i> <b>y</b>'), false);
+  assert.equal(tagsChanged('<b>a</b>', 'a'), true);
+  assert.equal(tagsChanged('a', 'a'), false);
+  assert.equal(tagsChanged('<b>a</b>', '<b>a</b><b>b</b>'), true);
+});
+
+test('buildIndex: only editable non-interp cells of the language, grouped by normalized value', () => {
+  const files = [
+    { file: 'A.ts', entries: [
+      { path: 'h', en: { value: 'July&nbsp;21', editable: true }, ru: { value: '21 июля', editable: true } },
+      { path: 'n', en: { value: '42', editable: false }, ru: null },
+      { path: 't', en: { value: 'x ${y}', editable: true, interp: true }, ru: null },
+      { path: 'e', en: { value: '', editable: true }, ru: null },
+    ]},
+    { file: 'B.ts', entries: [
+      { path: 'dup', en: { value: 'July 21', editable: true }, ru: null },
+    ]},
+  ];
+  const idx = buildIndex(files, 'en');
+  const hits = idx.get(normalizeValue('July 21'));
+  assert.equal(hits.length, 2); // A.ts h + B.ts dup — same normalized value
+  assert.deepEqual(hits[0], { file: 'A.ts', path: 'h', value: 'July&nbsp;21' });
+  assert.equal(idx.get(normalizeValue('42')), undefined);
+  assert.equal(idx.get(normalizeValue('x ${y}')), undefined);
+  const ruIdx = buildIndex(files, 'ru');
+  assert.equal(ruIdx.get(normalizeValue('21 июля')).length, 1);
+});
