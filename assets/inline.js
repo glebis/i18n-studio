@@ -13,8 +13,7 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
     // ---- state ----
     const matched = new WeakMap(); // element → { entries, original } (original = on-disk source string)
     let matchedEls = [];
-    let editing = null;            // { el, entry, original }
-    let saveTimer = 0;
+    let editing = null;            // { el, entry, original, dirty }
     let mode = false;
     const decorated = new Set(); // every element we've ever applied our outline to
 
@@ -116,7 +115,7 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
         // match broke since it was decorated (e.g. re-scan mid-session).
         for (const el of decorated) {
           clearOutline(el);
-          if (el.isContentEditable) stopEdit(el, false);
+          if (el.isContentEditable) stopEdit(el, true);
         }
         decorated.clear();
         document.removeEventListener('mouseover', onMatchedHover);
@@ -172,7 +171,7 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
     function startEdit(el) {
       if (el.isContentEditable) return;
       const m = matched.get(el);
-      editing = { el, entry: m.entries[0], original: m.original, domBefore: unwrapSpans(cleanHtml(el)) };
+      editing = { el, entry: m.entries[0], original: m.original, domBefore: unwrapSpans(cleanHtml(el)), dirty: false };
       el.contentEditable = 'true'; el.focus(); outline(el, '#d29922');
       el.addEventListener('input', onInput);
       el.addEventListener('blur', onBlur);
@@ -184,32 +183,42 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
       el.removeEventListener('blur', onBlur);
       el.removeEventListener('keydown', onKey);
       clearOutline(el); if (mode) outline(el, '#8b949e');
-      if (flush) { clearTimeout(saveTimer); save(); }
+      if (flush && editing && editing.dirty) save();
       editing = null;
     }
     const onBlur = () => editing && stopEdit(editing.el, true);
     const onKey = (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); editing && stopEdit(editing.el, true); } };
     function onInput() {
       outline(editing.el, '#d29922');
-      clearTimeout(saveTimer);
-      saveTimer = setTimeout(save, 500);
+      editing.dirty = true;
+    }
+
+    // Shared serialization: turns a session's current DOM state into the
+    // {file, lang, path, value} payload used by both the normal save() path
+    // and the beforeunload beacon, so the two cannot drift.
+    function serializeSession(session) {
+      const { el, entry } = session;
+      const cleanedInnerHtml = unwrapSpans(cleanHtml(el));
+      const value = serializeEdited(cleanedInnerHtml);
+      return { file: entry.file, lang, path: entry.path, value };
     }
 
     async function save() {
       const session = editing;
       if (!session) return;
       const { el, entry, original, domBefore } = session;
-      const cleanedInnerHtml = unwrapSpans(cleanHtml(el));
-      const value = serializeEdited(cleanedInnerHtml);
+      const payload = serializeSession(session);
+      const { value } = payload;
       if (normalizeValue(value) === normalizeValue(original)) return; // no-op edit
       try {
         const r = await fetch('/__i18n/api/save', {
           method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ file: entry.file, lang, path: entry.path, value }),
+          body: JSON.stringify(payload),
         });
         const out = await r.json();
         if (!out.ok) throw new Error(out.error || `HTTP ${r.status}`);
         outline(el, '#3fb950'); setTimeout(() => el.isConnected && mode && !el.isContentEditable && outline(el, '#8b949e'), 800);
+        const cleanedInnerHtml = unwrapSpans(cleanHtml(el));
         const warn = tagsChanged(domBefore, cleanedInnerHtml) ? '⚠ markup changed — double-check in the studio. ' : '';
         if (matched.has(el)) matched.get(el).original = value;
         if (editing === session) editing.original = value;
@@ -251,6 +260,16 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
       ssSet('pending-dup', JSON.stringify({ others, newValue, warn, ts: Date.now() }));
       showDuplicatesToast(others, newValue, warn);
     }
+
+    // Safety net: a dirty edit session lost to tab close / navigation would
+    // otherwise never save. sendBeacon fires a fire-and-forget POST using the
+    // same serialization pipeline as save(), so the two paths can't drift.
+    window.addEventListener('beforeunload', () => {
+      if (!editing || !editing.dirty) return;
+      const payload = serializeSession(editing);
+      if (normalizeValue(payload.value) === normalizeValue(editing.original)) return; // no-op edit
+      navigator.sendBeacon('/__i18n/api/save', new Blob([JSON.stringify(payload)], { type: 'application/json' }));
+    });
 
     scan();
 

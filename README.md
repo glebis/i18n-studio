@@ -58,9 +58,14 @@ only: `cd ~/ai_projects/i18n-studio && npm install`.
 - **Inline on-page editing (proxy mode).** Run with `--proxy http://localhost:4321`
   (your dev server) and open `http://localhost:4332`: the studio proxies the site
   and injects an editor. Toggle the corner badge, click any matched text, edit in
-  place — saves are debounced through the same AST-safe pipeline (acceptance drops,
-  duplicates offered via a toast). HTML strings are edited rich; a warning appears
-  if the markup structure changed. Zero changes to the target repo.
+  place — the edit saves when you finish the field (click away, press Esc, or
+  toggle edit mode off), not while you're typing, so a mid-sentence pause never
+  saves half-finished text; the page hot-reloads once per finished field. Saves
+  go through the same AST-safe pipeline (acceptance drops, duplicates offered
+  via a toast). Closing the tab or navigating away mid-edit still saves the
+  pending change via a `sendBeacon` safety net. HTML strings are edited rich; a
+  warning appears if the markup structure changed. Zero changes to the target
+  repo.
 
   Matching is resilient to scroll-reveal animations that wrap words in spans at
   runtime (e.g. `<span class="w">Start</span> <span class="w">from</span> …`):
