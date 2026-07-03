@@ -75,7 +75,11 @@ only: `cd ~/ai_projects/i18n-studio && npm install`.
   and transitions, so reveal/animation scripts don't rewrite the DOM out from
   under the scanner mid-match. The very first toggle-on reloads the page once so
   this signal is in place before the site's own scripts run; subsequent toggles
-  don't reload.
+  don't reload. Toggling edit mode off removes the frozen-animation style and
+  restores the original `matchMedia`, so site transitions resume — this is
+  best-effort (site scripts that already read the patched value at load keep
+  their decision), and animations are guaranteed to be fully back to normal
+  only after the next page reload.
 
 Large corpora: the list renders up to 150 filtered rows (a notice shows the rest);
 narrow the filter or use review mode to go through everything.

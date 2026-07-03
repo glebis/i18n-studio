@@ -15,6 +15,10 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
     let matchedEls = [];
     let editing = null;            // { el, entry, original, dirty }
     let mode = false;
+    // Tracks the payload of a save() request currently in flight, so the
+    // beforeunload handler can still beacon it if the tab closes before the
+    // fetch settles (see save() and the beforeunload listener below).
+    let inflightPayload = null;
     const decorated = new Set(); // every element we've ever applied our outline to
 
     // ---- sessionStorage persistence (survives HMR full-page reloads) ----
@@ -120,6 +124,15 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
         decorated.clear();
         document.removeEventListener('mouseover', onMatchedHover);
         keyhint.style.display = 'none';
+        // Un-freeze: remove the injected style and restore the original
+        // matchMedia so site transitions/animations work again. Best-effort:
+        // site scripts that already read the patched matchMedia value at load
+        // keep that decision until the next reload.
+        try {
+          const freezeStyle = document.getElementById('i18n-studio-freeze');
+          if (freezeStyle) freezeStyle.remove();
+          if (window.__i18nOrigMatchMedia) window.matchMedia = window.__i18nOrigMatchMedia;
+        } catch {}
       }
       ssSet('mode', on ? '1' : '');
       badge.textContent = `i18n edit: ${on ? 'on' : 'off'} · ${matchedEls.length} matched`;
@@ -210,6 +223,7 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
       const payload = serializeSession(session);
       const { value } = payload;
       if (normalizeValue(value) === normalizeValue(original)) return; // no-op edit
+      inflightPayload = payload;
       try {
         const r = await fetch('/__i18n/api/save', {
           method: 'POST', headers: { 'content-type': 'application/json' },
@@ -227,6 +241,8 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
         outline(el, '#f85149');
         toast(`save failed: ${e.message}`);
         console.warn('[i18n-studio]', e);
+      } finally {
+        inflightPayload = null;
       }
     }
 
@@ -265,10 +281,19 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
     // otherwise never save. sendBeacon fires a fire-and-forget POST using the
     // same serialization pipeline as save(), so the two paths can't drift.
     window.addEventListener('beforeunload', () => {
-      if (!editing || !editing.dirty) return;
-      const payload = serializeSession(editing);
-      if (normalizeValue(payload.value) === normalizeValue(editing.original)) return; // no-op edit
-      navigator.sendBeacon('/__i18n/api/save', new Blob([JSON.stringify(payload)], { type: 'application/json' }));
+      if (editing && editing.dirty) {
+        const payload = serializeSession(editing);
+        if (normalizeValue(payload.value) === normalizeValue(editing.original)) return; // no-op edit
+        navigator.sendBeacon('/__i18n/api/save', new Blob([JSON.stringify(payload)], { type: 'application/json' }));
+        return;
+      }
+      // No active dirty session, but a save() may still be in flight (e.g.
+      // stopEdit fired save() without awaiting it, then nulled `editing`).
+      // Beacon the same payload — sendBeacon is idempotent here, so a
+      // redundant write is harmless.
+      if (inflightPayload) {
+        navigator.sendBeacon('/__i18n/api/save', new Blob([JSON.stringify(inflightPayload)], { type: 'application/json' }));
+      }
     });
 
     scan();
