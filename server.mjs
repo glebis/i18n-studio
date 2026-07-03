@@ -21,6 +21,9 @@ import { readAll, write, LANGS, STRINGS_DIR } from './strings.mjs';
 import { langName, VOICE, PORT } from './config.mjs';
 import { readStatus, isAccepted, setAccepted, clearAccepted } from './status.mjs';
 
+// Build the Hono app. `queryFn` (the Claude Agent SDK call) is injected so tests
+// can drive /api/suggest without touching the model; it defaults to the real one.
+export function createApp({ queryFn = query } = {}) {
 const app = new Hono();
 
 // Corpus + review state. Each editable cell gets `accepted` computed from the
@@ -79,7 +82,7 @@ app.post('/api/suggest', async (c) => {
 
   try {
     let text = '';
-    for await (const msg of query({ prompt, options: { maxTurns: 1, allowedTools: [] } })) {
+    for await (const msg of queryFn({ prompt, options: { maxTurns: 1, allowedTools: [] } })) {
       if (msg.type === 'result') {
         if (msg.is_error) return c.json({ ok: false, error: msg.result || 'model error' }, 502);
         if (typeof msg.result === 'string') text = msg.result;
@@ -104,7 +107,10 @@ app.get('/assets/:name', (c) => {
   return c.body(readFileSync(join(HERE, 'assets', c.req.param('name'))), 200, { 'content-type': type, 'cache-control': 'max-age=86400' });
 });
 
-function parseList(text) {
+return app;
+}
+
+export function parseList(text) {
   if (!text) return [];
   const fence = text.replace(/```json?/gi, '').replace(/```/g, '').trim();
   const start = fence.indexOf('['), end = fence.lastIndexOf(']');
@@ -119,7 +125,11 @@ function parseList(text) {
     .filter(Boolean).slice(0, 5);
 }
 
-serve({ fetch: app.fetch, port: PORT }, (info) => {
-  console.log(`i18n Studio → http://localhost:${info.port}`);
-  console.log(`editing:     ${STRINGS_DIR}  (${LANGS.join(', ')})`);
-});
+// Start listening only when run directly (`node server.mjs`), not when imported
+// by tests — importing must have no side effects and must not bind a port.
+if (process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url)) {
+  serve({ fetch: createApp().fetch, port: PORT }, (info) => {
+    console.log(`i18n Studio → http://localhost:${info.port}`);
+    console.log(`editing:     ${STRINGS_DIR}  (${LANGS.join(', ')})`);
+  });
+}
