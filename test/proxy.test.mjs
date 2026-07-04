@@ -83,7 +83,7 @@ test('/__i18n/api/* is answered by the studio app, not the upstream', async () =
 
 test('/__i18n/inline.js and /__i18n/inline-map.mjs serve JS', async () => {
   const app = makeProxy({});
-  for (const p of ['/__i18n/inline.js', '/__i18n/inline-map.mjs', '/__i18n/pre.js']) {
+  for (const p of ['/__i18n/inline.js', '/__i18n/inline-map.mjs', '/__i18n/inline-state.mjs', '/__i18n/pre.js']) {
     const res = await app.request(p);
     assert.equal(res.status, 200, p);
     assert.match(res.headers.get('content-type'), /javascript/);

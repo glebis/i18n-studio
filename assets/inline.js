@@ -1,7 +1,9 @@
 // assets/inline.js — i18n Studio inline on-page editor.
 // Injected by proxy.mjs into every HTML page of the proxied dev server.
-// All logic with tests lives in inline-map.mjs; this file is DOM glue only.
+// All logic with tests lives in inline-map.mjs (matching/serialization) and
+// inline-state.mjs (session/duplicates/persistence state); this file is DOM glue only.
 import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans } from '/__i18n/inline-map.mjs';
+import { createSessionStore, duplicatesOffer, pendingDupCodec } from '/__i18n/inline-state.mjs';
 
 (async function boot() {
   try {
@@ -13,7 +15,7 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
     // ---- state ----
     const matched = new WeakMap(); // element → { entries, original } (original = on-disk source string)
     let matchedEls = [];
-    let editing = null;            // { el, entry, original, dirty }
+    const sessionStore = createSessionStore(); // { el, entry, original, domBefore, dirty }
     let mode = false;
     // Tracks the payload of a save() request currently in flight, so the
     // beforeunload handler can still beacon it if the tab closes before the
@@ -166,7 +168,8 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
       const el = ev.composedPath().find((n) => n instanceof Element && matched.has(n));
       if (!el) return;
       ev.preventDefault(); ev.stopPropagation();
-      if (editing && editing.el !== el) stopEdit(editing.el, true);
+      const active = sessionStore.current();
+      if (active && active.el !== el) stopEdit(active.el, true);
       startEdit(el);
     }, true);
 
@@ -198,7 +201,7 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
     function startEdit(el) {
       if (el.isContentEditable) return;
       const m = matched.get(el);
-      editing = { el, entry: m.entries[0], original: m.original, domBefore: unwrapSpans(cleanHtml(el)), dirty: false };
+      sessionStore.start(el, m.entries[0], m.original, unwrapSpans(cleanHtml(el)));
       el.contentEditable = 'true'; el.focus(); outline(el, '#d29922');
       el.addEventListener('input', onInput);
       el.addEventListener('blur', onBlur);
@@ -210,14 +213,15 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
       el.removeEventListener('blur', onBlur);
       el.removeEventListener('keydown', onKey);
       clearOutline(el); if (mode) outline(el, '#8b949e');
-      if (flush && editing && editing.dirty) save();
-      editing = null;
+      const current = sessionStore.current();
+      if (flush && current && current.dirty) save();
+      sessionStore.end();
     }
-    const onBlur = () => editing && stopEdit(editing.el, true);
-    const onKey = (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); editing && stopEdit(editing.el, true); } };
+    const onBlur = () => sessionStore.current() && stopEdit(sessionStore.current().el, true);
+    const onKey = (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); sessionStore.current() && stopEdit(sessionStore.current().el, true); } };
     function onInput() {
-      outline(editing.el, '#d29922');
-      editing.dirty = true;
+      outline(sessionStore.current().el, '#d29922');
+      sessionStore.markDirty();
     }
 
     // Shared serialization: turns a session's current DOM state into the
@@ -231,7 +235,7 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
     }
 
     async function save() {
-      const session = editing;
+      const session = sessionStore.current();
       if (!session) return;
       const { el, entry, original, domBefore } = session;
       const payload = serializeSession(session);
@@ -249,7 +253,7 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
         const cleanedInnerHtml = unwrapSpans(cleanHtml(el));
         const warn = tagsChanged(domBefore, cleanedInnerHtml) ? '⚠ markup changed — double-check in the studio. ' : '';
         if (matched.has(el)) matched.get(el).original = value;
-        if (editing === session) editing.original = value;
+        if (sessionStore.current() === session) session.original = value;
         offerDuplicates(entry, original, value, warn);
       } catch (e) {
         outline(el, '#f85149');
@@ -284,10 +288,10 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
     }
 
     function offerDuplicates(saved, oldValue, newValue, warn = '') {
-      const others = (index.get(normalizeValue(oldValue)) || [])
-        .filter((e) => !(e.file === saved.file && e.path === saved.path));
+      const oldValueNorm = normalizeValue(oldValue);
+      const others = duplicatesOffer(index.get(oldValueNorm), saved, oldValueNorm);
       if (!others.length) { if (warn) toast(warn); return; }
-      ssSet('pending-dup', JSON.stringify({ others, newValue, warn, ts: Date.now() }));
+      ssSet('pending-dup', pendingDupCodec.encode(others, newValue, warn, Date.now()));
       showDuplicatesToast(others, newValue, warn);
     }
 
@@ -295,14 +299,15 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
     // otherwise never save. sendBeacon fires a fire-and-forget POST using the
     // same serialization pipeline as save(), so the two paths can't drift.
     window.addEventListener('beforeunload', () => {
-      if (editing && editing.dirty) {
-        const payload = serializeSession(editing);
-        if (normalizeValue(payload.value) === normalizeValue(editing.original)) return; // no-op edit
+      const active = sessionStore.current();
+      if (active && active.dirty) {
+        const payload = serializeSession(active);
+        if (normalizeValue(payload.value) === normalizeValue(active.original)) return; // no-op edit
         navigator.sendBeacon('/__i18n/api/save', new Blob([JSON.stringify(payload)], { type: 'application/json' }));
         return;
       }
       // No active dirty session, but a save() may still be in flight (e.g.
-      // stopEdit fired save() without awaiting it, then nulled `editing`).
+      // stopEdit fired save() without awaiting it, then ended the session).
       // Beacon the same payload — sendBeacon is idempotent here, so a
       // redundant write is harmless.
       if (inflightPayload) {
@@ -317,14 +322,8 @@ import { normalizeValue, serializeEdited, tagsChanged, buildIndex, unwrapSpans }
     const pendingRaw = ssGet('pending-dup');
     if (pendingRaw) {
       ssRemove('pending-dup');
-      try {
-        const pending = JSON.parse(pendingRaw);
-        if (pending && Date.now() - pending.ts < 30000) {
-          showDuplicatesToast(pending.others, pending.newValue, pending.warn || '');
-        }
-      } catch (e) {
-        console.warn('[i18n-studio] failed to restore pending duplicates offer:', e);
-      }
+      const pending = pendingDupCodec.decode(pendingRaw, Date.now());
+      if (pending) showDuplicatesToast(pending.others, pending.newValue, pending.warn);
     }
   } catch (e) {
     console.warn('[i18n-studio] overlay failed to boot:', e);

@@ -38,6 +38,7 @@ export function createProxyApp({ target, studioFetch, fetchFn = fetch }) {
   const JS = {
     'inline.js': join(HERE, 'assets', 'inline.js'),
     'inline-map.mjs': join(HERE, 'inline-map.mjs'),
+    'inline-state.mjs': join(HERE, 'inline-state.mjs'),
     'pre.js': join(HERE, 'assets', 'pre.js'),
   };
   app.get('/__i18n/:name', (c) => {

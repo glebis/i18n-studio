@@ -19,6 +19,10 @@ try {
   function applyFreeze() {
     // Signal prefers-reduced-motion: true so scroll-reveal / animation libraries
     // that check matchMedia at runtime skip their word-wrapping DOM rewrites.
+    // This is a classic (non-module) script and cannot import inline-state.mjs,
+    // so the reduce/no-preference/pass-through decision below is duplicated by
+    // hand — see reducedMotionOverride() in inline-state.mjs for the reference
+    // implementation/spec and its tests; keep the two in sync if this rule changes.
     var origMatchMedia = window.__i18nOrigMatchMedia;
     if (origMatchMedia && !window.__i18nMatchMediaPatched) {
       window.__i18nMatchMediaPatched = true;
