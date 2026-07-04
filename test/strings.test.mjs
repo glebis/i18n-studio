@@ -25,6 +25,7 @@ const TEMPLATE = `export default {
     tmpl: \`Hi \${name}\`,
     quote: "she said \\"hi\\"",
     label: \`Static label\`,
+    single: 'Plain text',
   },
   ru: {
     simple: "Привет",
@@ -34,6 +35,7 @@ const TEMPLATE = `export default {
     tmpl: \`Привет \${name}\`,
     quote: "",
     label: \`Статичная метка\`,
+    single: 'Обычный текст',
   },
 };
 `;
@@ -83,6 +85,13 @@ test('readAll: static (non-interpolated) backtick literals are editable, not fla
   assert.equal(l.editable, true);
   assert.equal(l.interp, undefined);
   assert.equal(l.value, 'Static label');
+});
+
+test('readAll: single-quoted string literals are editable with their decoded value', () => {
+  const s = cells().single.en;
+  assert.equal(s.editable, true);
+  assert.equal(s.value, 'Plain text');
+  assert.equal(cells().single.ru.value, 'Обычный текст');
 });
 
 test('readAll: escaped quotes inside a literal are decoded', () => {
@@ -152,6 +161,29 @@ test('write: static backtick literal round-trips, including embedded quotes/back
   const value = 'He said "hi" \\ and left';
   write(FILE, 'en', 'label', value);
   assert.equal(cells().label.en.value, value);
+});
+
+test('write: single-quoted literal round-trips a plain value with minimal diff', () => {
+  const before = TEMPLATE.split('\n');
+  write(FILE, 'en', 'single', 'New value');
+  const text = raw();
+  assert.match(text, /single: 'New value'/);
+  assert.equal(cells().single.en.value, 'New value');
+  const after = text.split('\n');
+  assert.equal(before.length, after.length);
+  const changedLine = before.findIndex((l) => l.includes("single: 'Plain text'"));
+  for (let i = 0; i < before.length; i++) {
+    if (i === changedLine) continue;
+    assert.equal(after[i], before[i], `line ${i} should be byte-identical`);
+  }
+});
+
+test('write: single-quoted literal escapes an embedded apostrophe on save and round-trips the value back', () => {
+  const value = "it's fine";
+  write(FILE, 'en', 'single', value);
+  const text = raw();
+  assert.match(text, /single: 'it\\'s fine'/); // delimiter-escaped on disk
+  assert.equal(cells().single.en.value, value); // read back decoded, apostrophe intact
 });
 
 test('write: fills a previously empty target and reads it back', () => {
